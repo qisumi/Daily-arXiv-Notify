@@ -12,7 +12,7 @@ module.exports = {
       name: "daily-arxiv-notify",
       cwd,
       script: pythonBin,
-      args: ["scripts/run_daily.py", "--config", configFile, ...extraArgs],
+      args: ["-m", "app.cli", "run-once", "--config", configFile, ...extraArgs],
       interpreter: "none",
       exec_mode: "fork",
       autorestart: false,
