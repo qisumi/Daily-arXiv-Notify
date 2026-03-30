@@ -1,0 +1,45 @@
+timezone = "Asia/Shanghai"
+schedule = "15 13 * * *"
+
+[database]
+sqlite_path = "data/app.db"
+
+[arxiv]
+categories = ["cs.AI", "cs.LG", "cs.GL"]
+page_size = 100
+include_revisions = false
+max_pages = 5
+overlap_hours = 36
+
+[filtering]
+include_keywords = ["time series"]
+exclude_keywords = []
+ai_target_keywords = ["time series"]
+
+[llm]
+provider = "openai"
+base_url = "https://api.openai.com/v1"
+endpoint = "/responses"
+# legacy chat endpoint is also supported:
+# endpoint = "/chat/completions"
+api_key = ""
+classify_model = "gpt-5-mini"
+summarize_model = "gpt-5.4"
+reasoning_effort = "low"
+timeout_seconds = 120
+
+[digest]
+max_papers = 12
+section_strategy = "keyword"
+output_dir = "data/digests"
+attach_markdown = true
+
+[email]
+smtp_host = ""
+smtp_port = 587
+smtp_username = ""
+smtp_password = ""
+smtp_use_tls = true
+from_name = "Daily arXiv Notify"
+from_address = ""
+recipients = []

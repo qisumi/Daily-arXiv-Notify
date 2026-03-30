@@ -1,0 +1,14 @@
+.env
+.venv/
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+logs/
+config.toml
+data/app.db
+data/digests/*.html
+data/digests/*.md
+dist/
