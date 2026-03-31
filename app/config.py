@@ -42,6 +42,8 @@ class ArxivSettings:
     max_pages: int = 5
     overlap_hours: int = 36
     request_delay_seconds: float = 3.0
+    max_retries: int = 3
+    retry_backoff_seconds: float = 15.0
 
 
 @dataclass(slots=True)
@@ -59,6 +61,7 @@ class LLMSettings:
     api_key: str
     classify_model: str
     summarize_model: str
+    output_language: str = "English"
     reasoning_effort: str = "low"
     timeout_seconds: int = 120
 
@@ -126,6 +129,7 @@ class Settings:
                 "api_mode": self.llm.api_mode,
                 "classify_model": self.llm.classify_model,
                 "summarize_model": self.llm.summarize_model,
+                "output_language": self.llm.output_language,
                 "reasoning_effort": self.llm.reasoning_effort,
                 "timeout_seconds": self.llm.timeout_seconds,
             },
@@ -242,6 +246,10 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         request_delay_seconds=float(
             merged["arxiv"].get("request_delay_seconds", 3.0)
         ),
+        max_retries=int(merged["arxiv"].get("max_retries", 3)),
+        retry_backoff_seconds=float(
+            merged["arxiv"].get("retry_backoff_seconds", 15.0)
+        ),
     )
     filtering = FilteringSettings(
         include_keywords=_parse_recipients(merged["filtering"].get("include_keywords", [])),
@@ -259,6 +267,7 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         summarize_model=str(
             merged["llm"].get("summarize_model") or merged["llm"]["classify_model"]
         ),
+        output_language=str(merged["llm"].get("output_language", "English")).strip(),
         reasoning_effort=str(merged["llm"].get("reasoning_effort", "low")),
         timeout_seconds=int(merged["llm"].get("timeout_seconds", 120)),
     )
@@ -304,6 +313,7 @@ def _validate_settings(settings: Settings) -> None:
     _require_non_empty("llm.api_key", settings.llm.api_key, missing)
     _require_non_empty("llm.classify_model", settings.llm.classify_model, missing)
     _require_non_empty("llm.summarize_model", settings.llm.summarize_model, missing)
+    _require_non_empty("llm.output_language", settings.llm.output_language, missing)
     _require_non_empty("digest.output_dir", str(settings.digest.output_dir), missing)
     _require_non_empty("email.smtp_host", settings.email.smtp_host, missing)
     _require_non_empty("email.from_address", settings.email.from_address, missing)
@@ -326,6 +336,13 @@ def _validate_settings(settings: Settings) -> None:
             "Expected an endpoint ending with '/responses' or '/chat/completions', "
             f"got: {settings.llm.endpoint}"
         )
+
+    if settings.arxiv.request_delay_seconds < 0:
+        raise ConfigError("arxiv.request_delay_seconds must be >= 0")
+    if settings.arxiv.max_retries < 0:
+        raise ConfigError("arxiv.max_retries must be >= 0")
+    if settings.arxiv.retry_backoff_seconds < 0:
+        raise ConfigError("arxiv.retry_backoff_seconds must be >= 0")
 
     if missing:
         formatted = ", ".join(sorted(set(missing)))

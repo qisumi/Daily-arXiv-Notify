@@ -28,6 +28,7 @@ class DigestService:
             total_fetched=total_fetched,
             total_rule_matched=total_rule_matched,
             candidates=candidates,
+            content_language=self.settings.llm.output_language,
         )
         html = render_digest_html(markdown)
         digest_date = run_time.astimezone(self.settings.tzinfo).date().isoformat()

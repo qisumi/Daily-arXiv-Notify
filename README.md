@@ -109,6 +109,9 @@ page_size = 100
 include_revisions = false
 max_pages = 5
 overlap_hours = 36
+request_delay_seconds = 3.0
+max_retries = 3
+retry_backoff_seconds = 15.0
 
 [filtering]
 include_keywords = ["time series"]
@@ -122,6 +125,7 @@ endpoint = "/responses"
 api_key = ""
 classify_model = "gpt-5-mini"
 summarize_model = "gpt-5.4"
+output_language = "English"
 reasoning_effort = "low"
 timeout_seconds = 120
 
@@ -210,6 +214,9 @@ daily-arxiv-notify run-once --help
 | `arxiv.categories` | 需要跟踪的 arXiv 分类，例如 `cs.AI`、`cs.LG` |
 | `arxiv.include_revisions` | 是否把更新版本论文也纳入时间窗口 |
 | `arxiv.overlap_hours` | 与上次成功运行的重叠时间，降低漏抓风险 |
+| `arxiv.request_delay_seconds` | 任意两次 arXiv 请求之间的最小间隔秒数 |
+| `arxiv.max_retries` | arXiv 短暂失败（如 `429` / `5xx`）时的最大重试次数 |
+| `arxiv.retry_backoff_seconds` | arXiv 重试退避基线秒数，后续按指数增长 |
 | `filtering.include_keywords` | 首轮规则过滤必须命中的关键词 |
 | `filtering.exclude_keywords` | 命中即排除的关键词 |
 | `filtering.ai_target_keywords` | LLM 用来判断“是否相关”的目标关键词 |
@@ -217,6 +224,7 @@ daily-arxiv-notify run-once --help
 | `llm.endpoint` | 当前支持 `/responses` 和 `/chat/completions` |
 | `llm.classify_model` | 用于相关性判断的模型 |
 | `llm.summarize_model` | 用于摘要生成的模型 |
+| `llm.output_language` | `Why matched` 与 summary 内容的输出语言，默认 `English` |
 | `digest.max_papers` | 每日 digest 最多收录论文数 |
 | `digest.output_dir` | Markdown / HTML digest 输出目录 |
 | `email.recipients` | 收件人列表 |
@@ -347,7 +355,7 @@ python -m pytest -q
 
 - 摘要和相关性判断目前只基于 title + abstract，不读取 PDF 全文
 - LLM prompt 还写在代码里，没有独立版本化管理
-- 没有做 arXiv / OpenAI / SMTP 的自动重试与退避
+- OpenAI / SMTP 目前还没有自动重试与退避
 - 没有提供 backfill、replay、告警、监控、Docker 部署
 - `section_strategy` 等部分配置项已经预留，但还没有完整发挥作用
 

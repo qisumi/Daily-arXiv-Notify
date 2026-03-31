@@ -7,6 +7,7 @@ from openai import OpenAI
 
 from app.config import LLMSettings
 from app.models import KeywordFilterResult, PaperSummaryResult
+from app.output_language import normalize_output_language
 
 
 class OpenAIClient:
@@ -84,15 +85,18 @@ class OpenAIClient:
         title: str,
         abstract: str,
     ) -> list[dict[str, str]]:
+        output_language = normalize_output_language(self.settings.output_language)
         return [
             {
                 "role": "system",
                 "content": dedent(
-                    """
+                    f"""
                     You determine whether a research paper is related to configured keywords.
                     Use only the provided title and abstract.
                     Do not judge paper quality, novelty, or importance.
                     Return matched keywords only when there is a clear connection.
+                    Write the reason field in {output_language}.
+                    Keep matched_keywords as exact strings copied from the configured keywords.
                     """
                 ).strip(),
             },
@@ -102,6 +106,9 @@ class OpenAIClient:
                     f"""
                     Target keywords:
                     {", ".join(keywords)}
+
+                    Output language:
+                    {output_language}
 
                     Paper title:
                     {title}
@@ -119,14 +126,17 @@ class OpenAIClient:
         title: str,
         abstract: str,
     ) -> list[dict[str, str]]:
+        output_language = normalize_output_language(self.settings.output_language)
         return [
             {
                 "role": "system",
                 "content": dedent(
-                    """
+                    f"""
                     Summarize the research paper using only the provided title and abstract.
                     Be concise and factual.
                     If the abstract does not support a detail, say so instead of guessing.
+                    Write all free-text fields in {output_language}.
+                    Preserve paper titles, model names, and technical terms when translating them would reduce clarity.
                     """
                 ).strip(),
             },
@@ -134,6 +144,9 @@ class OpenAIClient:
                 "role": "user",
                 "content": dedent(
                     f"""
+                    Output language:
+                    {output_language}
+
                     Paper title:
                     {title}
 

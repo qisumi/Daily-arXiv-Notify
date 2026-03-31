@@ -9,6 +9,7 @@ from app.clients.openai_client import OpenAIClient
 from app.config import Settings
 from app.db import Database
 from app.models import CandidatePaper, RunWindow
+from app.progress import iter_progress
 from app.services.delivery_service import DeliveryService
 from app.services.digest_service import DigestService
 from app.services.filter_service import FilterService
@@ -23,6 +24,8 @@ class DailyDigestPipeline:
         self.database = Database(settings.database.sqlite_path)
         self.arxiv_client = ArxivClient(
             request_delay_seconds=settings.arxiv.request_delay_seconds,
+            max_retries=settings.arxiv.max_retries,
+            retry_backoff_seconds=settings.arxiv.retry_backoff_seconds,
             user_agent=f"Daily-arXiv-notify/0.1 ({settings.email.from_address})",
         )
         self.llm_client = OpenAIClient(settings.llm)
@@ -57,7 +60,12 @@ class DailyDigestPipeline:
             total_rule_matched = 0
             selected: list[tuple[int, object, object, object, bool]] = []
 
-            for paper_id, paper in ingested:
+            for paper_id, paper in iter_progress(
+                ingested,
+                total=total_fetched,
+                desc="Filtering papers",
+                unit="paper",
+            ):
                 rule_result, ai_result = self.filter_service.evaluate_paper(
                     run_id=run_id,
                     paper_id=paper_id,
@@ -83,7 +91,12 @@ class DailyDigestPipeline:
             shortlisted = selected[: self.settings.digest.max_papers]
 
             candidates: list[CandidatePaper] = []
-            for paper_id, paper, rule_result, ai_result, is_update_only in shortlisted:
+            for paper_id, paper, rule_result, ai_result, is_update_only in iter_progress(
+                shortlisted,
+                total=len(shortlisted),
+                desc="Summarizing papers",
+                unit="paper",
+            ):
                 summary_result = self.summarize_service.summarize_paper(
                     run_id=run_id,
                     paper_id=paper_id,

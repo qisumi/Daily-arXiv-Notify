@@ -10,6 +10,9 @@ page_size = 100
 include_revisions = false
 max_pages = 5
 overlap_hours = 36
+request_delay_seconds = 3.0
+max_retries = 3
+retry_backoff_seconds = 15.0
 
 [filtering]
 include_keywords = ["time series"]
@@ -25,6 +28,7 @@ endpoint = "/responses"
 api_key = ""
 classify_model = "gpt-5-mini"
 summarize_model = "gpt-5.4"
+output_language = "English"
 reasoning_effort = "low"
 timeout_seconds = 120
 

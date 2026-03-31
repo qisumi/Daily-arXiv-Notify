@@ -7,16 +7,21 @@ from app.clients.openai_client import OpenAIClient
 from app.config import Settings
 from app.db import Database
 from app.models import ArxivPaper, KeywordFilterResult, PaperSummaryResult
+from app.output_language import localize_output_text, output_language_slug
 
 
 class SummarizeService:
-    PROMPT_VERSION = "paper-summary-v1"
+    BASE_PROMPT_VERSION = "paper-summary-v2"
 
     def __init__(self, settings: Settings, database: Database, llm_client: OpenAIClient) -> None:
         self.settings = settings
         self.database = database
         self.llm_client = llm_client
         self.logger = logging.getLogger(__name__)
+
+    @property
+    def prompt_version(self) -> str:
+        return f"{self.BASE_PROMPT_VERSION}-{output_language_slug(self.settings.llm.output_language)}"
 
     def summarize_paper(
         self,
@@ -29,7 +34,7 @@ class SummarizeService:
         cached = self.database.get_cached_summary(
             paper_id=paper_id,
             model_name=self.settings.llm.summarize_model,
-            prompt_version=self.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
         )
         if cached is not None:
             self.database.insert_summary(
@@ -37,7 +42,7 @@ class SummarizeService:
                 paper_id=paper_id,
                 summary=cached,
                 model_name=self.settings.llm.summarize_model,
-                prompt_version=self.PROMPT_VERSION,
+                prompt_version=self.prompt_version,
                 created_at=datetime.now(timezone.utc),
             )
             return cached
@@ -56,13 +61,13 @@ class SummarizeService:
             paper_id=paper_id,
             summary=summary,
             model_name=self.settings.llm.summarize_model,
-            prompt_version=self.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             created_at=datetime.now(timezone.utc),
         )
         return summary
 
-    @staticmethod
     def _fallback_summary(
+        self,
         paper: ArxivPaper,
         ai_result: KeywordFilterResult,
     ) -> PaperSummaryResult:
@@ -74,8 +79,26 @@ class SummarizeService:
         return PaperSummaryResult(
             one_line=one_line,
             problem=abstract[:400].rstrip() or paper.title,
-            method="Unavailable because the fallback uses the raw abstract only.",
-            why_it_matters=f"The paper matched {matched}.",
-            limitations="Fallback summary generated without a successful LLM call.",
+            method=localize_output_text(
+                self.settings.llm.output_language,
+                english="Unavailable because the fallback uses the raw abstract only.",
+                chinese="该字段不可用，因为回退摘要只能直接使用原始 abstract。",
+            ),
+            why_it_matters=localize_output_text(
+                self.settings.llm.output_language,
+                english=f"The paper matched {matched}.",
+                chinese=f"这篇论文命中了以下关键词：{matched}。",
+            ),
+            limitations=localize_output_text(
+                self.settings.llm.output_language,
+                english=(
+                    "Fallback summary generated without a successful LLM call. "
+                    "The content may remain in the paper's original language."
+                ),
+                chinese=(
+                    "未能成功调用 LLM，因此使用了回退摘要。"
+                    "内容可能保留论文原始语言。"
+                ),
+            ),
             tags=ai_result.matched_keywords,
         )

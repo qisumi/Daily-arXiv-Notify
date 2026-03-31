@@ -127,3 +127,69 @@ def test_load_settings_accepts_legacy_chat_endpoint(tmp_path: Path) -> None:
 
     assert settings.llm.endpoint == "/chat/completions"
     assert settings.llm.api_mode == "chat_completions"
+
+
+def test_load_settings_reads_output_language(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE.replace(
+            'reasoning_effort = "low"',
+            '\n'.join(
+                [
+                    'output_language = "Chinese"',
+                    'reasoning_effort = "low"',
+                ]
+            ),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.llm.output_language == "Chinese"
+
+
+def test_load_settings_reads_arxiv_retry_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE.replace(
+            "overlap_hours = 36",
+            "\n".join(
+                [
+                    "overlap_hours = 36",
+                    "request_delay_seconds = 4.5",
+                    "max_retries = 6",
+                    "retry_backoff_seconds = 20.0",
+                ]
+            ),
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.arxiv.request_delay_seconds == 4.5
+    assert settings.arxiv.max_retries == 6
+    assert settings.arxiv.retry_backoff_seconds == 20.0

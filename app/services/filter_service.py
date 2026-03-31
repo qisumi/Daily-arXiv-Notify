@@ -7,16 +7,21 @@ from app.clients.openai_client import OpenAIClient
 from app.config import Settings
 from app.db import Database
 from app.models import ArxivPaper, KeywordFilterResult, RuleFilterResult
+from app.output_language import localize_output_text, output_language_slug
 
 
 class FilterService:
-    PROMPT_VERSION = "keyword-filter-v1"
+    BASE_PROMPT_VERSION = "keyword-filter-v2"
 
     def __init__(self, settings: Settings, database: Database, llm_client: OpenAIClient) -> None:
         self.settings = settings
         self.database = database
         self.llm_client = llm_client
         self.logger = logging.getLogger(__name__)
+
+    @property
+    def prompt_version(self) -> str:
+        return f"{self.BASE_PROMPT_VERSION}-{output_language_slug(self.settings.llm.output_language)}"
 
     def evaluate_paper(
         self,
@@ -31,7 +36,11 @@ class FilterService:
             ai_result = KeywordFilterResult(
                 is_related=False,
                 matched_keywords=[],
-                reason="Skipped AI keyword filter because the rule filter rejected the paper.",
+                reason=localize_output_text(
+                    self.settings.llm.output_language,
+                    english="Skipped AI keyword filter because the rule filter rejected the paper.",
+                    chinese="规则过滤已拒绝该论文，因此跳过了 AI 关键词判断。",
+                ),
             )
             self.database.insert_evaluation(
                 run_id=run_id,
@@ -41,7 +50,7 @@ class FilterService:
                 ai_result=ai_result,
                 evaluated_keywords=self.settings.target_keywords,
                 model_name=self.settings.llm.classify_model,
-                prompt_version=self.PROMPT_VERSION,
+                prompt_version=self.prompt_version,
                 created_at=datetime.now(timezone.utc),
             )
             return rule_result, ai_result
@@ -50,7 +59,7 @@ class FilterService:
             paper_id=paper_id,
             evaluated_keywords=self.settings.target_keywords,
             model_name=self.settings.llm.classify_model,
-            prompt_version=self.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
         )
         if cached is not None:
             self.database.insert_evaluation(
@@ -61,7 +70,7 @@ class FilterService:
                 ai_result=cached,
                 evaluated_keywords=self.settings.target_keywords,
                 model_name=self.settings.llm.classify_model,
-                prompt_version=self.PROMPT_VERSION,
+                prompt_version=self.prompt_version,
                 created_at=datetime.now(timezone.utc),
             )
             return rule_result, cached
@@ -84,7 +93,7 @@ class FilterService:
             ai_result=ai_result,
             evaluated_keywords=self.settings.target_keywords,
             model_name=self.settings.llm.classify_model,
-            prompt_version=self.PROMPT_VERSION,
+            prompt_version=self.prompt_version,
             created_at=datetime.now(timezone.utc),
         )
         return rule_result, ai_result
@@ -138,9 +147,16 @@ class FilterService:
             for keyword in self.settings.target_keywords
             if keyword.lower() in text
         ]
-        reason = (
-            "LLM request failed; used lexical fallback on title and abstract. "
-            f"Original error: {error}"
+        reason = localize_output_text(
+            self.settings.llm.output_language,
+            english=(
+                "LLM request failed; used lexical fallback on title and abstract. "
+                f"Original error: {error}"
+            ),
+            chinese=(
+                "LLM 请求失败；已改用标题和摘要的词法回退。"
+                f"原始错误：{error}"
+            ),
         )
         return KeywordFilterResult(
             is_related=bool(matched),

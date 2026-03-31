@@ -5,11 +5,13 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from typing import Iterable
 
 import httpx
 
 from app.models import ArxivPaper, RunWindow
+from app.progress import iter_progress
 
 
 ATOM_NS = {
@@ -17,6 +19,8 @@ ATOM_NS = {
     "arxiv": "http://arxiv.org/schemas/atom",
 }
 VERSION_PATTERN = re.compile(r"^(?P<id>.+?)(?P<version>v\d+)?$")
+RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+DEFAULT_ARXIV_BASE_URL = "https://export.arxiv.org"
 
 
 class ArxivClient:
@@ -24,13 +28,18 @@ class ArxivClient:
         self,
         *,
         request_delay_seconds: float = 3.0,
+        max_retries: int = 3,
+        retry_backoff_seconds: float = 15.0,
         timeout_seconds: int = 30,
         user_agent: str = "Daily-arXiv-notify/0.1",
     ) -> None:
         self.request_delay_seconds = request_delay_seconds
+        self.max_retries = max_retries
+        self.retry_backoff_seconds = retry_backoff_seconds
         self.logger = logging.getLogger(__name__)
+        self._last_request_started_at: float | None = None
         self._client = httpx.Client(
-            base_url="https://export.arxiv.org",
+            base_url=DEFAULT_ARXIV_BASE_URL,
             headers={"User-Agent": user_agent},
             timeout=timeout_seconds,
         )
@@ -47,24 +56,42 @@ class ArxivClient:
         max_pages: int,
         include_revisions: bool,
     ) -> list[ArxivPaper]:
+        category_list = list(categories)
         papers: dict[tuple[str, str], ArxivPaper] = {}
+        raw_entry_count = 0
 
-        for category in categories:
-            fetched = self._fetch_category(
+        for category in iter_progress(
+            category_list,
+            total=len(category_list),
+            desc="Fetching arXiv",
+            unit="category",
+        ):
+            fetched, category_entry_count = self._fetch_category(
                 category=category,
                 window=window,
                 page_size=page_size,
                 max_pages=max_pages,
                 include_revisions=include_revisions,
             )
+            raw_entry_count += category_entry_count
             for paper in fetched:
                 papers[(paper.arxiv_id, paper.version)] = paper
 
-        return sorted(
+        fetched_papers = sorted(
             papers.values(),
             key=lambda item: max(item.published_at, item.updated_at),
             reverse=True,
         )
+        self.logger.info(
+            "Fetched %s raw arXiv API entries before deduplication",
+            raw_entry_count,
+        )
+        self.logger.info(
+            "Fetched %s unique papers from arXiv across %s categories",
+            len(fetched_papers),
+            len(category_list),
+        )
+        return fetched_papers
 
     def _fetch_category(
         self,
@@ -74,14 +101,12 @@ class ArxivClient:
         page_size: int,
         max_pages: int,
         include_revisions: bool,
-    ) -> list[ArxivPaper]:
+    ) -> tuple[list[ArxivPaper], int]:
         sort_by = "lastUpdatedDate" if include_revisions else "submittedDate"
         papers: list[ArxivPaper] = []
+        raw_entry_count = 0
 
         for page_index in range(max_pages):
-            if page_index > 0:
-                time.sleep(self.request_delay_seconds)
-
             params = {
                 "search_query": f"cat:{category}",
                 "start": page_index * page_size,
@@ -89,12 +114,12 @@ class ArxivClient:
                 "sortBy": sort_by,
                 "sortOrder": "descending",
             }
-            response = self._client.get("/api/query", params=params)
-            response.raise_for_status()
+            response = self._get_with_retries("/api/query", params=params)
 
             page_papers = self._parse_response(response.text)
             if not page_papers:
                 break
+            raw_entry_count += len(page_papers)
 
             self.logger.info(
                 "Fetched %s entries from arXiv category %s (page %s/%s)",
@@ -111,7 +136,111 @@ class ArxivClient:
             if self._should_stop(page_papers, window, include_revisions):
                 break
 
-        return papers
+        return papers, raw_entry_count
+
+    def _get_with_retries(
+        self,
+        path: str,
+        *,
+        params: dict[str, str | int],
+    ) -> httpx.Response:
+        for attempt in range(self.max_retries + 1):
+            try:
+                response = self._send_get_request(path, params=params)
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as exc:
+                if (
+                    exc.response.status_code not in RETRYABLE_STATUS_CODES
+                    or attempt >= self.max_retries
+                ):
+                    raise
+                self._sleep_before_retry(
+                    delay=self._retry_delay_seconds(exc.response, attempt),
+                    reason=f"HTTP {exc.response.status_code}",
+                    url=str(exc.request.url),
+                    retry_number=attempt + 1,
+                )
+            except httpx.RequestError as exc:
+                if attempt >= self.max_retries:
+                    raise
+                self._sleep_before_retry(
+                    delay=self._retry_delay_seconds(None, attempt),
+                    reason=exc.__class__.__name__,
+                    url=str(exc.request.url),
+                    retry_number=attempt + 1,
+                )
+
+        raise RuntimeError("Unreachable arXiv retry loop")  # pragma: no cover
+
+    def _send_get_request(
+        self,
+        path: str,
+        *,
+        params: dict[str, str | int],
+    ) -> httpx.Response:
+        self._wait_for_request_slot()
+        self._last_request_started_at = time.monotonic()
+        return self._client.get(path, params=params)
+
+    def _wait_for_request_slot(self) -> None:
+        if self.request_delay_seconds <= 0 or self._last_request_started_at is None:
+            return
+
+        elapsed = time.monotonic() - self._last_request_started_at
+        remaining = self.request_delay_seconds - elapsed
+        if remaining > 0:
+            time.sleep(remaining)
+
+    def _sleep_before_retry(
+        self,
+        *,
+        delay: float,
+        reason: str,
+        url: str,
+        retry_number: int,
+    ) -> None:
+        self.logger.warning(
+            "Transient arXiv request failure (%s). Retrying in %.1f seconds (%s/%s): %s",
+            reason,
+            delay,
+            retry_number,
+            self.max_retries,
+            url,
+        )
+        time.sleep(delay)
+
+    def _retry_delay_seconds(
+        self,
+        response: httpx.Response | None,
+        attempt: int,
+    ) -> float:
+        delay = self.retry_backoff_seconds * (2**attempt)
+        retry_after = self._retry_after_seconds(response)
+        if retry_after is None:
+            return delay
+        return max(delay, retry_after)
+
+    @staticmethod
+    def _retry_after_seconds(response: httpx.Response | None) -> float | None:
+        if response is None:
+            return None
+
+        raw_value = response.headers.get("Retry-After", "").strip()
+        if not raw_value:
+            return None
+
+        try:
+            return max(float(raw_value), 0.0)
+        except ValueError:
+            try:
+                retry_at = parsedate_to_datetime(raw_value)
+            except (TypeError, ValueError, IndexError):
+                return None
+
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+        return max((retry_at - datetime.now(timezone.utc)).total_seconds(), 0.0)
 
     def _parse_response(self, xml_text: str) -> list[ArxivPaper]:
         root = ET.fromstring(xml_text)

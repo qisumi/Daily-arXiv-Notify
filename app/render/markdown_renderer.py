@@ -5,6 +5,7 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 from app.models import CandidatePaper
+from app.output_language import localize_output_text
 
 
 def render_digest_markdown(
@@ -15,6 +16,7 @@ def render_digest_markdown(
     total_fetched: int,
     total_rule_matched: int,
     candidates: list[CandidatePaper],
+    content_language: str = "English",
 ) -> str:
     tzinfo = ZoneInfo(timezone_name)
     digest_date = run_time.astimezone(tzinfo).date().isoformat()
@@ -57,15 +59,30 @@ def render_digest_markdown(
 
     for keyword, items in grouped.items():
         title = keyword if keyword == "Other Matched Papers" else f"Keyword: {keyword}"
-        lines.extend(_render_section(title, items))
+        lines.extend(_render_section(title, items, content_language=content_language))
 
     if updates:
-        lines.extend(_render_section("Updated Papers", updates))
+        lines.extend(_render_section("Updated Papers", updates, content_language=content_language))
 
     return "\n".join(lines).strip() + "\n"
 
 
-def _render_section(title: str, items: list[CandidatePaper]) -> list[str]:
+def _render_section(
+    title: str,
+    items: list[CandidatePaper],
+    *,
+    content_language: str,
+) -> list[str]:
+    why_matched_label = localize_output_text(
+        content_language,
+        english="Why matched",
+        chinese="匹配原因",
+    )
+    summary_label = localize_output_text(
+        content_language,
+        english="Summary",
+        chinese="摘要",
+    )
     lines = [f"## {title}", ""]
     for item in items:
         lines.extend(
@@ -75,8 +92,8 @@ def _render_section(title: str, items: list[CandidatePaper]) -> list[str]:
                 f"- Authors: {', '.join(item.paper.authors)}",
                 f"- Categories: {', '.join(item.paper.categories)}",
                 f"- Matched keywords: {', '.join(item.ai_result.matched_keywords) or 'N/A'}",
-                f"- Why matched: {item.ai_result.reason}",
-                f"- Summary: {item.summary_result.one_line}",
+                f"- {why_matched_label}: {item.ai_result.reason}",
+                f"- {summary_label}: {item.summary_result.one_line}",
                 f"- Links: [abs]({item.paper.abs_url}) | [pdf]({item.paper.pdf_url})",
                 "",
             ]

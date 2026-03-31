@@ -28,7 +28,7 @@ class FakeChatAPI:
         return SimpleNamespace(choices=[choice])
 
 
-def _make_settings(endpoint: str) -> LLMSettings:
+def _make_settings(endpoint: str, output_language: str = "English") -> LLMSettings:
     return LLMSettings(
         provider="openai",
         base_url="https://api.openai.com/v1",
@@ -36,6 +36,7 @@ def _make_settings(endpoint: str) -> LLMSettings:
         api_key="test-key",
         classify_model="gpt-5-mini",
         summarize_model="gpt-5.4",
+        output_language=output_language,
         reasoning_effort="low",
         timeout_seconds=30,
     )
@@ -79,3 +80,31 @@ def test_openai_client_uses_chat_api_for_chat_endpoint():
     assert result.is_related is True
     assert len(fake_responses.calls) == 0
     assert len(fake_chat.calls) == 1
+
+
+def test_openai_client_includes_output_language_in_prompts():
+    client = OpenAIClient(_make_settings("/responses", output_language="Chinese"))
+    fake_responses = FakeResponsesAPI(
+        parsed=SimpleNamespace(
+            one_line="摘要",
+            problem="问题",
+            method="方法",
+            why_it_matters="意义",
+            limitations="限制",
+            tags=["agent"],
+        )
+    )
+    client._client = SimpleNamespace(
+        responses=fake_responses,
+        beta=SimpleNamespace(chat=SimpleNamespace(completions=FakeChatAPI(parsed=None))),
+    )
+
+    result = client.summarize_paper(
+        title="Agent paper",
+        abstract="This paper studies agent systems.",
+    )
+
+    assert result.one_line == "摘要"
+    assert len(fake_responses.calls) == 1
+    messages = fake_responses.calls[0]["input"]
+    assert any("Chinese" in message["content"] for message in messages)
