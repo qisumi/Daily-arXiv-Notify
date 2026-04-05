@@ -46,6 +46,25 @@ class PaperSummaryResult(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class PaperDetailResult(BaseModel):
+    source: str
+    headline: str
+    contribution_summary: str
+    problem_and_context: str
+    research_question: str
+    method_overview: str
+    novelty_and_positioning: str
+    experimental_setup: str
+    key_findings: list[str] = Field(default_factory=list)
+    evidence_and_credibility: str
+    strengths: list[str] = Field(default_factory=list)
+    limitations: list[str] = Field(default_factory=list)
+    practical_implications: list[str] = Field(default_factory=list)
+    open_questions: list[str] = Field(default_factory=list)
+    relevance_to_keywords: str
+    reading_guide: list[str] = Field(default_factory=list)
+
+
 @dataclass(slots=True)
 class RunWindow:
     window_start: datetime
@@ -75,6 +94,7 @@ class CandidatePaper:
     ai_result: KeywordFilterResult
     summary_result: PaperSummaryResult
     is_update_only: bool = False
+    detail_result: PaperDetailResult | None = None
 
 
 @dataclass(slots=True)

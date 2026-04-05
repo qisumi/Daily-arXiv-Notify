@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from textwrap import dedent
+from pathlib import Path
 from typing import Any
 
 from openai import OpenAI
 
 from app.config import LLMSettings
-from app.models import KeywordFilterResult, PaperSummaryResult
+from app.models import KeywordFilterResult, PaperDetailResult, PaperSummaryResult
 from app.output_language import normalize_output_language
+from app.prompts.loader import render_prompt
 
 
 class OpenAIClient:
@@ -47,11 +48,50 @@ class OpenAIClient:
             operation_name="summarization",
         )
 
+    def analyze_paper_pdf(
+        self,
+        *,
+        pdf_path: Path,
+        title: str,
+        abstract: str,
+        matched_keywords: list[str],
+        upload_expires_after_hours: int,
+    ) -> PaperDetailResult:
+        if self.settings.api_mode != "responses":
+            raise RuntimeError("PDF detail analysis requires the Responses API endpoint.")
+
+        with pdf_path.open("rb") as file_handle:
+            uploaded_file = self._client.files.create(
+                file=file_handle,
+                purpose="user_data",
+                expires_after={
+                    "anchor": "created_at",
+                    "seconds": upload_expires_after_hours * 3600,
+                },
+            )
+
+        response = self._client.responses.parse(
+            model=self.settings.effective_detail_model,
+            input=self._build_detail_messages(
+                title=title,
+                abstract=abstract,
+                matched_keywords=matched_keywords,
+                file_id=uploaded_file.id,
+            ),
+            text_format=PaperDetailResult,
+            reasoning={
+                "effort": self.settings.effective_detail_reasoning_effort,
+            },
+        )
+        if response.output_parsed is None:  # pragma: no cover
+            raise RuntimeError("OpenAI detail analysis returned no parsed output.")
+        return response.output_parsed
+
     def _parse_structured_output(
         self,
         *,
         model: str,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
         schema: type[Any],
         operation_name: str,
     ) -> Any:
@@ -89,34 +129,20 @@ class OpenAIClient:
         return [
             {
                 "role": "system",
-                "content": dedent(
-                    f"""
-                    You determine whether a research paper is related to configured keywords.
-                    Use only the provided title and abstract.
-                    Do not judge paper quality, novelty, or importance.
-                    Return matched keywords only when there is a clear connection.
-                    Write the reason field in {output_language}.
-                    Keep matched_keywords as exact strings copied from the configured keywords.
-                    """
-                ).strip(),
+                "content": render_prompt(
+                    "keyword_filter_system",
+                    output_language=output_language,
+                ),
             },
             {
                 "role": "user",
-                "content": dedent(
-                    f"""
-                    Target keywords:
-                    {", ".join(keywords)}
-
-                    Output language:
-                    {output_language}
-
-                    Paper title:
-                    {title}
-
-                    Paper abstract:
-                    {abstract}
-                    """
-                ).strip(),
+                "content": render_prompt(
+                    "keyword_filter_user",
+                    keywords=", ".join(keywords),
+                    output_language=output_language,
+                    title=title,
+                    abstract=abstract,
+                ),
             },
         ]
 
@@ -130,29 +156,62 @@ class OpenAIClient:
         return [
             {
                 "role": "system",
-                "content": dedent(
-                    f"""
-                    Summarize the research paper using only the provided title and abstract.
-                    Be concise and factual.
-                    If the abstract does not support a detail, say so instead of guessing.
-                    Write all free-text fields in {output_language}.
-                    Preserve paper titles, model names, and technical terms when translating them would reduce clarity.
-                    """
-                ).strip(),
+                "content": render_prompt(
+                    "paper_summary_system",
+                    output_language=output_language,
+                ),
             },
             {
                 "role": "user",
-                "content": dedent(
-                    f"""
-                    Output language:
-                    {output_language}
+                "content": render_prompt(
+                    "paper_summary_user",
+                    output_language=output_language,
+                    title=title,
+                    abstract=abstract,
+                ),
+            },
+        ]
 
-                    Paper title:
-                    {title}
-
-                    Paper abstract:
-                    {abstract}
-                    """
-                ).strip(),
+    def _build_detail_messages(
+        self,
+        *,
+        title: str,
+        abstract: str,
+        matched_keywords: list[str],
+        file_id: str,
+    ) -> list[dict[str, Any]]:
+        output_language = normalize_output_language(self.settings.output_language)
+        keyword_text = ", ".join(matched_keywords) if matched_keywords else "None"
+        return [
+            {
+                "role": "system",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": render_prompt(
+                            "paper_detail_system",
+                            output_language=output_language,
+                        ),
+                    }
+                ],
+            },
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "input_text",
+                        "text": render_prompt(
+                            "paper_detail_user",
+                            output_language=output_language,
+                            title=title,
+                            abstract=abstract,
+                            matched_keywords=keyword_text,
+                        ),
+                    },
+                    {
+                        "type": "input_file",
+                        "file_id": file_id,
+                    },
+                ],
             },
         ]

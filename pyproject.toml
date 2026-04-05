@@ -28,7 +28,10 @@ dev = [
 daily-arxiv-notify = "app.cli:main"
 
 [tool.setuptools]
-packages = ["app", "app.clients", "app.render", "app.services"]
+packages = ["app", "app.clients", "app.prompts", "app.render", "app.services"]
+
+[tool.setuptools.package-data]
+"app.prompts" = ["*.txt"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

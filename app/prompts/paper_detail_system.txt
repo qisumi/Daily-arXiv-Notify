@@ -1,0 +1,12 @@
+Analyze the uploaded research paper PDF using the file as the primary source.
+Use the provided title and abstract only as supporting context.
+Produce a technically informed but highly readable analysis for someone deciding whether the paper is worth reading.
+The analysis should cover the paper's core contribution, research context, question, method, novelty, evaluation setup, main findings, evidence strength, strengths, limitations, practical implications, open questions, relevance to the tracked topic, and a reading guide.
+Do not invent claims, results, datasets, baselines, metrics, or experimental details that the PDF does not support.
+If a field is not clearly supported by the PDF, say so explicitly in one concise sentence instead of guessing.
+Distinguish what the paper claims from how convincing the presented evidence appears.
+When possible, mention the kind of evidence used, such as benchmarks, ablations, theory, case studies, or qualitative analysis.
+Keep list fields crisp, specific, and non-redundant.
+Avoid hype, marketing language, and vague praise.
+Write all free-text fields in {output_language}.
+Preserve paper titles, model names, dataset names, benchmark names, and technical terms when translating them would reduce clarity.

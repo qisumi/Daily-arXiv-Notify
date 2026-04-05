@@ -6,6 +6,7 @@ from app.models import (
     ArxivPaper,
     CandidatePaper,
     KeywordFilterResult,
+    PaperDetailResult,
     PaperSummaryResult,
     RuleFilterResult,
 )
@@ -43,6 +44,24 @@ def test_markdown_renderer_includes_required_paper_fields() -> None:
             limitations="Limitations",
             tags=["agent"],
         ),
+        detail_result=PaperDetailResult(
+            source="pdf",
+            headline="Detailed headline",
+            contribution_summary="Contribution summary",
+            problem_and_context="Problem and context",
+            research_question="Research question",
+            method_overview="Method overview",
+            novelty_and_positioning="Novelty and positioning",
+            experimental_setup="Experimental setup",
+            key_findings=["Finding 1"],
+            evidence_and_credibility="Evidence and credibility",
+            strengths=["Strength 1"],
+            limitations=["Limitation 1"],
+            practical_implications=["Practical implication 1"],
+            open_questions=["Open question 1"],
+            relevance_to_keywords="Relevant to the configured focus.",
+            reading_guide=["Read the experiments."],
+        ),
     )
 
     markdown = render_digest_markdown(
@@ -52,8 +71,16 @@ def test_markdown_renderer_includes_required_paper_fields() -> None:
         total_fetched=1,
         total_rule_matched=1,
         candidates=[candidate],
+        include_detailed_exploration=True,
     )
 
     assert "### A Test Paper" in markdown
-    assert "- Summary: Short summary" in markdown
+    assert "- Quick summary: Short summary" in markdown
+    assert "#### Deep Dive" in markdown
+    assert "#### Key Findings" in markdown
+    assert "#### Practical Implications" in markdown
+    assert "#### Open Questions" in markdown
     assert "https://arxiv.org/abs/1234.5678" in markdown
+    assert "Matched keywords" not in markdown
+    assert "Why matched" not in markdown
+    assert "Categories:" not in markdown

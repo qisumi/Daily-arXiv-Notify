@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from app.config import load_settings
+import pytest
+
+from app.config import ConfigError, load_settings
 
 
 CONFIG_TEMPLATE = """
@@ -31,6 +33,8 @@ endpoint = "/responses"
 api_key = ""
 classify_model = "gpt-5-mini"
 summarize_model = "gpt-5.4"
+detail_model = "doubao-seed-2-0-pro-260215"
+detail_reasoning_effort = "high"
 reasoning_effort = "low"
 timeout_seconds = 30
 
@@ -193,3 +197,71 @@ def test_load_settings_reads_arxiv_retry_settings(tmp_path: Path) -> None:
     assert settings.arxiv.request_delay_seconds == 4.5
     assert settings.arxiv.max_retries == 6
     assert settings.arxiv.retry_backoff_seconds == 20.0
+
+
+def test_load_settings_reads_pdf_enrichment_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE
+        + """
+
+[pdf_enrichment]
+enabled = true
+download_dir = "data/pdfs"
+max_file_size_mb = 25
+timeout_seconds = 240
+max_retries = 4
+retry_backoff_seconds = 12.5
+upload_expires_after_hours = 36
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.llm.detail_model == "doubao-seed-2-0-pro-260215"
+    assert settings.llm.effective_detail_reasoning_effort == "high"
+    assert settings.pdf_enrichment.enabled is True
+    assert settings.pdf_enrichment.max_file_size_mb == 25
+    assert settings.pdf_enrichment.timeout_seconds == 240
+    assert settings.pdf_enrichment.max_retries == 4
+    assert settings.pdf_enrichment.retry_backoff_seconds == 12.5
+    assert settings.pdf_enrichment.upload_expires_after_hours == 36
+
+
+def test_load_settings_requires_responses_endpoint_for_pdf_enrichment(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE.replace('endpoint = "/responses"', 'endpoint = "/chat/completions"')
+        + """
+
+[pdf_enrichment]
+enabled = true
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match="pdf_enrichment.enabled requires llm.endpoint"):
+        load_settings(config_path)

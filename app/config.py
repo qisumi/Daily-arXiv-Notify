@@ -61,8 +61,10 @@ class LLMSettings:
     api_key: str
     classify_model: str
     summarize_model: str
+    detail_model: str = ""
     output_language: str = "English"
     reasoning_effort: str = "low"
+    detail_reasoning_effort: str = ""
     timeout_seconds: int = 120
 
     @property
@@ -73,6 +75,25 @@ class LLMSettings:
         if endpoint.endswith("/chat/completions"):
             return "chat_completions"
         return "unknown"
+
+    @property
+    def effective_detail_model(self) -> str:
+        return self.detail_model or self.summarize_model
+
+    @property
+    def effective_detail_reasoning_effort(self) -> str:
+        return self.detail_reasoning_effort or self.reasoning_effort
+
+
+@dataclass(slots=True)
+class PDFEnrichmentSettings:
+    enabled: bool = False
+    download_dir: Path = Path("data/pdfs")
+    max_file_size_mb: int = 40
+    timeout_seconds: int = 180
+    max_retries: int = 2
+    retry_backoff_seconds: float = 10.0
+    upload_expires_after_hours: int = 24
 
 
 @dataclass(slots=True)
@@ -106,6 +127,7 @@ class Settings:
     digest: DigestSettings
     email: EmailSettings
     base_dir: Path
+    pdf_enrichment: PDFEnrichmentSettings = field(default_factory=PDFEnrichmentSettings)
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -129,13 +151,19 @@ class Settings:
                 "api_mode": self.llm.api_mode,
                 "classify_model": self.llm.classify_model,
                 "summarize_model": self.llm.summarize_model,
+                "detail_model": self.llm.effective_detail_model,
                 "output_language": self.llm.output_language,
                 "reasoning_effort": self.llm.reasoning_effort,
+                "detail_reasoning_effort": self.llm.effective_detail_reasoning_effort,
                 "timeout_seconds": self.llm.timeout_seconds,
             },
             "digest": {
                 **asdict(self.digest),
                 "output_dir": str(self.digest.output_dir),
+            },
+            "pdf_enrichment": {
+                **asdict(self.pdf_enrichment),
+                "download_dir": str(self.pdf_enrichment.download_dir),
             },
             "email": {
                 "smtp_port": self.email.smtp_port,
@@ -267,8 +295,12 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         summarize_model=str(
             merged["llm"].get("summarize_model") or merged["llm"]["classify_model"]
         ),
+        detail_model=str(merged["llm"].get("detail_model", "")).strip(),
         output_language=str(merged["llm"].get("output_language", "English")).strip(),
         reasoning_effort=str(merged["llm"].get("reasoning_effort", "low")),
+        detail_reasoning_effort=str(
+            merged["llm"].get("detail_reasoning_effort", "")
+        ).strip(),
         timeout_seconds=int(merged["llm"].get("timeout_seconds", 120)),
     )
     digest = DigestSettings(
@@ -276,6 +308,23 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         section_strategy=str(merged["digest"].get("section_strategy", "keyword")),
         output_dir=_resolve_path(base_dir, merged["digest"]["output_dir"]),
         attach_markdown=bool(merged["digest"].get("attach_markdown", True)),
+    )
+    pdf_enrichment_raw = merged.get("pdf_enrichment", {})
+    pdf_enrichment = PDFEnrichmentSettings(
+        enabled=bool(pdf_enrichment_raw.get("enabled", False)),
+        download_dir=_resolve_path(
+            base_dir,
+            str(pdf_enrichment_raw.get("download_dir", "data/pdfs")),
+        ),
+        max_file_size_mb=int(pdf_enrichment_raw.get("max_file_size_mb", 40)),
+        timeout_seconds=int(pdf_enrichment_raw.get("timeout_seconds", 180)),
+        max_retries=int(pdf_enrichment_raw.get("max_retries", 2)),
+        retry_backoff_seconds=float(
+            pdf_enrichment_raw.get("retry_backoff_seconds", 10.0)
+        ),
+        upload_expires_after_hours=int(
+            pdf_enrichment_raw.get("upload_expires_after_hours", 24)
+        ),
     )
     email = EmailSettings(
         smtp_host=str(merged["email"].get("smtp_host", "")).strip(),
@@ -297,6 +346,7 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         digest=digest,
         email=email,
         base_dir=base_dir,
+        pdf_enrichment=pdf_enrichment,
     )
     _validate_settings(settings)
     return settings
@@ -336,6 +386,10 @@ def _validate_settings(settings: Settings) -> None:
             "Expected an endpoint ending with '/responses' or '/chat/completions', "
             f"got: {settings.llm.endpoint}"
         )
+    if settings.pdf_enrichment.enabled and settings.llm.api_mode != "responses":
+        raise ConfigError(
+            "pdf_enrichment.enabled requires llm.endpoint to end with '/responses'."
+        )
 
     if settings.arxiv.request_delay_seconds < 0:
         raise ConfigError("arxiv.request_delay_seconds must be >= 0")
@@ -343,6 +397,16 @@ def _validate_settings(settings: Settings) -> None:
         raise ConfigError("arxiv.max_retries must be >= 0")
     if settings.arxiv.retry_backoff_seconds < 0:
         raise ConfigError("arxiv.retry_backoff_seconds must be >= 0")
+    if settings.pdf_enrichment.max_file_size_mb <= 0:
+        raise ConfigError("pdf_enrichment.max_file_size_mb must be > 0")
+    if settings.pdf_enrichment.timeout_seconds <= 0:
+        raise ConfigError("pdf_enrichment.timeout_seconds must be > 0")
+    if settings.pdf_enrichment.max_retries < 0:
+        raise ConfigError("pdf_enrichment.max_retries must be >= 0")
+    if settings.pdf_enrichment.retry_backoff_seconds < 0:
+        raise ConfigError("pdf_enrichment.retry_backoff_seconds must be >= 0")
+    if settings.pdf_enrichment.upload_expires_after_hours <= 0:
+        raise ConfigError("pdf_enrichment.upload_expires_after_hours must be > 0")
 
     if missing:
         formatted = ", ".join(sorted(set(missing)))

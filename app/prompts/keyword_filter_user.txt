@@ -1,0 +1,11 @@
+Target keywords:
+{keywords}
+
+Output language:
+{output_language}
+
+Paper title:
+{title}
+
+Paper abstract:
+{abstract}

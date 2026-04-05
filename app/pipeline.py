@@ -11,6 +11,7 @@ from app.db import Database
 from app.models import CandidatePaper, RunWindow
 from app.progress import iter_progress
 from app.services.delivery_service import DeliveryService
+from app.services.detail_service import DetailService
 from app.services.digest_service import DigestService
 from app.services.filter_service import FilterService
 from app.services.ingest_service import IngestService
@@ -28,16 +29,39 @@ class DailyDigestPipeline:
             retry_backoff_seconds=settings.arxiv.retry_backoff_seconds,
             user_agent=f"Daily-arXiv-notify/0.1 ({settings.email.from_address})",
         )
+        self.pdf_arxiv_client = (
+            ArxivClient(
+                request_delay_seconds=settings.arxiv.request_delay_seconds,
+                max_retries=settings.pdf_enrichment.max_retries,
+                retry_backoff_seconds=settings.pdf_enrichment.retry_backoff_seconds,
+                timeout_seconds=settings.pdf_enrichment.timeout_seconds,
+                user_agent=f"Daily-arXiv-notify/0.1 ({settings.email.from_address})",
+            )
+            if settings.pdf_enrichment.enabled
+            else None
+        )
         self.llm_client = OpenAIClient(settings.llm)
         self.email_client = EmailClient(settings.email)
         self.ingest_service = IngestService(settings, self.database, self.arxiv_client)
         self.filter_service = FilterService(settings, self.database, self.llm_client)
         self.summarize_service = SummarizeService(settings, self.database, self.llm_client)
+        self.detail_service = (
+            DetailService(
+                settings,
+                self.database,
+                self.llm_client,
+                self.pdf_arxiv_client,
+            )
+            if self.pdf_arxiv_client is not None
+            else None
+        )
         self.digest_service = DigestService(settings)
         self.delivery_service = DeliveryService(settings, self.email_client)
 
     def close(self) -> None:
         self.arxiv_client.close()
+        if self.pdf_arxiv_client is not None:
+            self.pdf_arxiv_client.close()
         self.database.close()
 
     def run(self, *, dry_run: bool = False) -> int:
@@ -103,6 +127,15 @@ class DailyDigestPipeline:
                     paper=paper,
                     ai_result=ai_result,
                 )
+                detail_result = None
+                if self.detail_service is not None:
+                    detail_result = self.detail_service.build_detail(
+                        run_id=run_id,
+                        paper_id=paper_id,
+                        paper=paper,
+                        ai_result=ai_result,
+                        summary_result=summary_result,
+                    )
                 candidates.append(
                     CandidatePaper(
                         paper_id=paper_id,
@@ -111,6 +144,7 @@ class DailyDigestPipeline:
                         ai_result=ai_result,
                         summary_result=summary_result,
                         is_update_only=is_update_only,
+                        detail_result=detail_result,
                     )
                 )
 

@@ -1,0 +1,19 @@
+Output language:
+{output_language}
+
+Paper title:
+{title}
+
+Paper abstract:
+{abstract}
+
+Matched keywords:
+{matched_keywords}
+
+Focus on producing a comprehensive but scannable paper analysis.
+Prioritize:
+1. What problem the paper is trying to solve and why it matters.
+2. What the main technical idea is and how it differs from typical or prior approaches.
+3. What evidence the paper actually provides and how convincing it seems.
+4. What the main strengths, limitations, practical implications, and unresolved questions are.
+5. Why this paper is relevant to the tracked topic represented by the matched keywords.

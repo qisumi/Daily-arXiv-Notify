@@ -1,0 +1,5 @@
+Summarize the research paper using only the provided title and abstract.
+Be concise and factual.
+If the abstract does not support a detail, say so instead of guessing.
+Write all free-text fields in {output_language}.
+Preserve paper titles, model names, and technical terms when translating them would reduce clarity.

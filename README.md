@@ -1,60 +1,68 @@
 # Daily arXiv Notify
 
-`Daily arXiv Notify` 是一个用于生成每日 arXiv 论文摘要邮件的轻量级自动化项目。它会按配置抓取指定分类的新论文或更新论文，先做关键词规则过滤，再用 LLM 判断相关性并生成摘要，最后把结果渲染成 Markdown / HTML digest，通过 SMTP 发送到邮箱。
+[简体中文](README_ZH.md)
 
-适合以下场景：
+`Daily arXiv Notify` is a lightweight automation project for generating a daily arXiv digest email. It incrementally fetches papers from selected arXiv categories, applies rule-based keyword filtering, uses an LLM for relevance classification and structured summarization, optionally downloads shortlisted PDFs for deeper analysis through the Files API, renders the result into Markdown and HTML, and sends the digest through SMTP.
 
-- 跟踪 `cs.AI`、`cs.LG` 等分类下与你研究方向相关的新论文
-- 为个人或小团队生成每日论文晨报
-- 用 SQLite 保留抓取、筛选、摘要和发送记录，便于回溯
-- 通过 PM2 或其他调度器做日常定时运行
+## Use Cases
 
-## 功能特性
+- Track new papers in categories such as `cs.AI`, `cs.LG`, and other fields relevant to your research.
+- Generate a daily reading shortlist for an individual researcher or a small team.
+- Keep SQLite records for fetched papers, filtering decisions, summaries, detailed analyses, and delivery history.
+- Run the pipeline on a schedule with PM2, cron, or another process manager.
 
-- 基于 arXiv Atom API 增量抓取论文
-- 支持多分类抓取和重叠时间窗口，降低漏抓风险
-- 先做本地关键词规则过滤，再做 LLM 相关性判断
-- 使用 LLM 为入选论文生成结构化摘要
-- 自动生成 Markdown 和 HTML 两种 digest
-- 通过 SMTP 发送邮件，可附带 Markdown 文件
-- 使用 SQLite 缓存论文、评估结果、摘要结果和运行记录
-- 支持 `dry-run`，便于先验证输出，不直接发信
-- 内置 PM2 部署配置和 release 打包脚本
+## Features
 
-## 工作流程
+- Incremental arXiv fetching through the Atom API.
+- Multi-category ingestion with overlap windows to reduce missed papers.
+- Rule-based include/exclude keyword filtering before any model call.
+- LLM-based relevance classification for papers that pass the rule filter.
+- Structured abstract-level summaries for shortlisted papers.
+- Optional PDF download and deeper PDF-grounded analysis via the Files API.
+- Markdown and HTML digest generation.
+- SMTP delivery with optional Markdown attachment.
+- SQLite caching for evaluations, summaries, details, runs, and digest metadata.
+- External prompt templates under `app/prompts/`, instead of mixing prompt text into client code.
+- `dry-run` mode for validating output without sending mail.
 
-1. 从 arXiv 抓取指定分类在时间窗口内的论文
-2. 把论文元数据写入 SQLite
-3. 用 `include_keywords` / `exclude_keywords` 做首轮规则过滤
-4. 对通过规则过滤的论文调用 LLM 做相关性判断
-5. 对最终入选的论文调用 LLM 生成结构化摘要
-6. 输出 `data/digests/*.md` 和 `data/digests/*.html`
-7. 通过 SMTP 发送 digest 邮件
-8. 将运行状态、筛选结果、摘要结果和发送状态落库
+## Workflow
 
-## 当前实现范围
+1. Fetch papers from configured arXiv categories inside the current time window.
+2. Persist paper metadata to SQLite.
+3. Apply local `include_keywords` / `exclude_keywords`.
+4. Call the LLM to classify relevance for papers that survive the rule filter.
+5. Generate a structured summary for shortlisted papers.
+6. Optionally download the shortlisted paper PDFs.
+7. Upload PDFs through the Files API and request a richer structured analysis.
+8. Render the digest into `Markdown` and `HTML`.
+9. Send the digest through SMTP.
+10. Persist run state, evaluation results, summaries, detailed analyses, and delivery metadata.
 
-当前仓库已经具备一个可运行的 MVP：
+## Current Scope
 
-- 配置加载：`config.toml` + `.env` + 进程环境变量覆盖
-- 抓取：arXiv 分类抓取、时间窗口增量拉取、可选 revision 纳入
-- 筛选：规则过滤 + LLM 分类，失败时有词法回退
-- 摘要：LLM 摘要，失败时回退到基于 abstract 的简版摘要
-- 渲染：Markdown 和 HTML digest
-- 发送：SMTP 发信
-- 存储：SQLite 持久化运行和产物信息
-- 部署：PM2 配置、release 压缩包构建脚本
+The repository already supports an end-to-end daily workflow:
 
-## 快速开始
+- Config loading through `config.toml`, `.env`, and process environment overrides.
+- arXiv category fetching with overlap windows and optional revision handling.
+- Rule filter plus LLM classifier, with lexical fallback if classification fails.
+- Structured summary generation from title and abstract.
+- Optional PDF download, Files API upload, and richer paper detail analysis.
+- Markdown and HTML digest rendering.
+- SMTP delivery.
+- SQLite persistence for runs and artifacts.
+- External prompt templates loaded from files.
+- Basic automated tests for config, DB, renderer, prompt loading, OpenAI client behavior, detail service fallback, and arXiv client utilities.
 
-### 1. 环境要求
+## Quick Start
+
+### 1. Requirements
 
 - Python `3.10+`
-- 可访问 arXiv API
-- 可用的 SMTP 服务
-- 可用的 OpenAI API Key，或兼容 OpenAI SDK 的接口地址
+- Access to the arXiv API
+- An SMTP service
+- A working OpenAI-compatible API endpoint and API key
 
-### 2. 安装依赖
+### 2. Install
 
 ```bash
 git clone <your-repo-url>
@@ -76,9 +84,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .[dev]
 ```
 
-### 3. 准备配置文件
-
-复制示例配置：
+### 3. Prepare Config
 
 ```bash
 cp config.example.toml config.toml
@@ -92,9 +98,9 @@ Copy-Item config.example.toml config.toml
 Copy-Item .env.example .env
 ```
 
-然后按需修改 `config.toml` 和 `.env`。
+Then edit `config.toml` and `.env` to fit your environment.
 
-`config.toml` 示例：
+Example `config.toml`:
 
 ```toml
 timezone = "Asia/Shanghai"
@@ -122,12 +128,25 @@ ai_target_keywords = ["time series"]
 provider = "openai"
 base_url = "https://api.openai.com/v1"
 endpoint = "/responses"
+# legacy chat endpoint is also supported:
+# endpoint = "/chat/completions"
 api_key = ""
 classify_model = "gpt-5-mini"
 summarize_model = "gpt-5.4"
-output_language = "English"
-reasoning_effort = "low"
+detail_model = "gpt-5.4"
+output_language = "Chinese"
+reasoning_effort = "high"
+detail_reasoning_effort = "high"
 timeout_seconds = 120
+
+[pdf_enrichment]
+enabled = true
+download_dir = "data/pdfs"
+max_file_size_mb = 40
+timeout_seconds = 180
+max_retries = 2
+retry_backoff_seconds = 10.0
+upload_expires_after_hours = 24
 
 [digest]
 max_papers = 12
@@ -146,7 +165,7 @@ from_address = ""
 recipients = []
 ```
 
-`.env` 示例：
+Example `.env`:
 
 ```env
 OPENAI_API_KEY=your_openai_api_key
@@ -157,48 +176,48 @@ SMTP_FROM_ADDRESS=user@example.com
 SMTP_RECIPIENTS=you@example.com,team@example.com
 ```
 
-### 4. 先做一次 dry-run
+### 4. Dry Run
 
 ```bash
 daily-arxiv-notify run-once --config config.toml --dry-run
 ```
 
-这一步会：
+This will:
 
-- 抓取 arXiv 数据
-- 生成 digest 文件
-- 写入 SQLite 运行记录
-- 不实际发送邮件
+- fetch arXiv data
+- generate digest files
+- write run records to SQLite
+- skip actual email delivery
 
-### 5. 正式发送
+### 5. Send for Real
 
 ```bash
 daily-arxiv-notify run-once --config config.toml
 ```
 
-开启详细日志：
+Verbose mode:
 
 ```bash
 daily-arxiv-notify run-once --config config.toml --verbose
 ```
 
-CLI 帮助：
+CLI help:
 
 ```bash
 daily-arxiv-notify run-once --help
 ```
 
-## 配置说明
+## Configuration
 
-### 配置优先级
+### Priority
 
-敏感配置按以下优先级覆盖：
+Sensitive values are overridden in this order:
 
-1. 进程环境变量
+1. process environment variables
 2. `.env`
 3. `config.toml`
 
-当前支持覆盖的字段：
+Supported secret overrides:
 
 - `OPENAI_API_KEY`
 - `SMTP_HOST`
@@ -207,72 +226,116 @@ daily-arxiv-notify run-once --help
 - `SMTP_FROM_ADDRESS`
 - `SMTP_RECIPIENTS`
 
-### 主要配置项
+### Main Settings
 
-| 配置项 | 说明 |
+| Key | Description |
 | --- | --- |
-| `arxiv.categories` | 需要跟踪的 arXiv 分类，例如 `cs.AI`、`cs.LG` |
-| `arxiv.include_revisions` | 是否把更新版本论文也纳入时间窗口 |
-| `arxiv.overlap_hours` | 与上次成功运行的重叠时间，降低漏抓风险 |
-| `arxiv.request_delay_seconds` | 任意两次 arXiv 请求之间的最小间隔秒数 |
-| `arxiv.max_retries` | arXiv 短暂失败（如 `429` / `5xx`）时的最大重试次数 |
-| `arxiv.retry_backoff_seconds` | arXiv 重试退避基线秒数，后续按指数增长 |
-| `filtering.include_keywords` | 首轮规则过滤必须命中的关键词 |
-| `filtering.exclude_keywords` | 命中即排除的关键词 |
-| `filtering.ai_target_keywords` | LLM 用来判断“是否相关”的目标关键词 |
-| `llm.base_url` | OpenAI SDK 使用的基础地址，可换成兼容接口 |
-| `llm.endpoint` | 当前支持 `/responses` 和 `/chat/completions` |
-| `llm.classify_model` | 用于相关性判断的模型 |
-| `llm.summarize_model` | 用于摘要生成的模型 |
-| `llm.output_language` | `Why matched` 与 summary 内容的输出语言，默认 `English` |
-| `digest.max_papers` | 每日 digest 最多收录论文数 |
-| `digest.output_dir` | Markdown / HTML digest 输出目录 |
-| `email.recipients` | 收件人列表 |
+| `arxiv.categories` | arXiv categories to monitor, such as `cs.AI` and `cs.LG`. |
+| `arxiv.include_revisions` | Whether revised versions should also enter the time window. |
+| `arxiv.overlap_hours` | Overlap with the previous successful run to reduce misses. |
+| `arxiv.request_delay_seconds` | Minimum delay between arXiv requests. |
+| `arxiv.max_retries` | Retry count for transient arXiv failures. |
+| `arxiv.retry_backoff_seconds` | Base retry backoff for arXiv requests. |
+| `filtering.include_keywords` | Required keywords for the first rule-based pass. |
+| `filtering.exclude_keywords` | Keywords that immediately exclude a paper. |
+| `filtering.ai_target_keywords` | Keywords used by the LLM to judge relevance. |
+| `llm.base_url` | Base URL for the OpenAI-compatible SDK client. |
+| `llm.endpoint` | Supported endpoints are `/responses` and `/chat/completions`. |
+| `llm.classify_model` | Model used for relevance classification. |
+| `llm.summarize_model` | Model used for structured summaries. |
+| `llm.detail_model` | Model used for PDF-grounded detailed analysis. |
+| `llm.output_language` | Output language for summaries and deep analysis. |
+| `llm.reasoning_effort` | General reasoning setting and fallback detail reasoning value. |
+| `llm.detail_reasoning_effort` | Reasoning effort specifically for PDF detail analysis. |
+| `pdf_enrichment.enabled` | Whether shortlisted PDFs should be downloaded and analyzed. |
+| `pdf_enrichment.download_dir` | Local directory for cached PDFs. |
+| `pdf_enrichment.max_file_size_mb` | Maximum allowed PDF size per paper. |
+| `pdf_enrichment.timeout_seconds` | Request timeout for PDF download. |
+| `pdf_enrichment.upload_expires_after_hours` | File expiration period for Files API uploads. |
+| `digest.max_papers` | Maximum papers included in one daily digest. |
+| `digest.output_dir` | Output directory for Markdown and HTML digests. |
+| `email.recipients` | Recipient list for the final email. |
 
-说明：
+Notes:
 
-- `schedule` 当前主要作为配置记录字段存在，实际定时执行仍由 PM2、cron 或其他调度器负责。
-- `digest.section_strategy` 在当前 MVP 中建议保持为 `keyword`。
-- `llm.reasoning_effort` 已在配置中保留，但当前版本没有传入 OpenAI 请求参数。
+- `schedule` is currently a recorded config field; scheduling is still handled by PM2, cron, or another external scheduler.
+- `digest.section_strategy` is still effectively `keyword` in the current implementation.
+- When `pdf_enrichment.enabled = true`, `llm.endpoint` must be `/responses`.
+- Prompt templates live under `app/prompts/`, while prompt-version naming is still managed by code constants in the service layer.
 
-## 输出结果
+## Output
 
-默认会在本地生成以下产物：
+Default artifacts:
 
 ```text
 data/
   app.db
+  pdfs/
+    *.pdf
   digests/
     digest-YYYY-MM-DD.md
     digest-YYYY-MM-DD.html
 ```
 
-其中：
+- `data/app.db`: run history, paper metadata, evaluation cache, summary cache, detail cache, and delivery state
+- `data/pdfs/`: downloaded PDF cache for shortlisted papers
+- `data/digests/*.md`: archival digest and optional email attachment
+- `data/digests/*.html`: HTML email body
 
-- `data/app.db` 保存运行记录、论文元数据、评估缓存、摘要缓存和 digest 发送状态
-- `data/digests/*.md` 适合归档、审阅或作为邮件附件
-- `data/digests/*.html` 用作邮件 HTML 正文
-
-当前数据库包含以下核心表：
+Core database tables:
 
 - `runs`
 - `papers`
 - `paper_evaluations`
 - `paper_summaries`
+- `paper_details`
 - `digests`
 
-## 定时运行
+## Prompt Management
 
-仓库已经提供 PM2 配置文件：`ecosystem.config.cjs`。
+Prompt templates are stored under `app/prompts/` and rendered through a shared loader. The current prompt set includes:
 
-安装 PM2 后可以这样启动：
+- `keyword_filter_system.txt`
+- `keyword_filter_user.txt`
+- `paper_summary_system.txt`
+- `paper_summary_user.txt`
+- `paper_detail_system.txt`
+- `paper_detail_user.txt`
+
+This keeps prompt text out of the OpenAI client implementation and makes prompt iteration easier.
+
+## Detailed Paper Analysis
+
+For shortlisted papers, the optional PDF-enrichment path can ask the model for a richer `PaperDetailResult`. The current structure is designed for practical paper triage rather than only producing a longer abstract:
+
+- `headline`
+- `contribution_summary`
+- `problem_and_context`
+- `research_question`
+- `method_overview`
+- `novelty_and_positioning`
+- `experimental_setup`
+- `key_findings`
+- `evidence_and_credibility`
+- `strengths`
+- `limitations`
+- `practical_implications`
+- `open_questions`
+- `relevance_to_keywords`
+- `reading_guide`
+
+The model is asked to separate what the paper claims from how convincing the evidence appears, avoid unsupported details, and explicitly acknowledge uncertainty when the PDF does not justify a conclusion.
+
+## Scheduling
+
+The repository includes `ecosystem.config.cjs` for PM2-based scheduling.
 
 ```bash
 pm2 start ecosystem.config.cjs
 pm2 save
 ```
 
-也可以通过环境变量覆盖默认参数：
+You can also override defaults via environment variables:
 
 ```bash
 PM2_CRON="15 13 * * *" \
@@ -281,29 +344,25 @@ CONFIG_FILE="config.toml" \
 pm2 start ecosystem.config.cjs
 ```
 
-建议：
+Recommendations:
 
-- 让 `PM2_CRON` 与 `config.toml` 中的 `schedule` 保持一致，避免配置和实际运行时间不一致
-- 首次部署先执行一次 `--dry-run`
-- 检查 `logs/pm2-out.log` 和 `logs/pm2-error.log`
+- keep `PM2_CRON` aligned with `config.toml`
+- do one `--dry-run` before enabling production delivery
+- inspect `logs/pm2-out.log` and `logs/pm2-error.log`
 
-## 构建发布包
-
-项目提供了一个 release 打包脚本，用来生成可部署的 zip 包。
-
-Python 方式：
+## Release Packaging
 
 ```bash
 python scripts/build_release.py --clean --exclude-local-config
 ```
 
-PowerShell 方式：
+PowerShell:
 
 ```powershell
 .\scripts\build_release.ps1 -Clean -ExcludeLocalConfig
 ```
 
-默认输出到 `dist/` 目录，压缩包内包含：
+The archive is written to `dist/` and includes:
 
 - `app/`
 - `scripts/`
@@ -313,51 +372,54 @@ PowerShell 方式：
 - `config.example.toml`
 - `.env.example`
 
-如果不加 `--exclude-local-config`，还会把本地 `config.toml` 和 `.env` 一起打进去。
+If `--exclude-local-config` is not used, local `config.toml` and `.env` are included too.
 
-## 测试
+## Testing
 
-当前仓库包含基础测试，覆盖：
-
-- 配置加载和环境变量优先级
-- SQLite 基本落库逻辑
-- Markdown renderer 输出字段
-- OpenAI client 在 `/responses` 和 `/chat/completions` 两种模式下的切换
-
-本地执行：
+Run the full test suite locally:
 
 ```bash
 python -m pytest -q
 ```
 
-## 项目结构
+Current tests cover:
+
+- config loading and validation
+- database persistence and cache behavior
+- Markdown / HTML rendering
+- prompt loading
+- OpenAI client mode switching and Files API detail flow
+- detail service fallback behavior
+- arXiv client request spacing and PDF download validation
+
+## Project Layout
 
 ```text
 .
 ├─ app/
-│  ├─ clients/      # arXiv / OpenAI / SMTP 客户端
-│  ├─ render/       # Markdown / HTML 渲染
-│  ├─ services/     # ingest / filter / summarize / digest / delivery
-│  ├─ cli.py        # CLI 入口
-│  ├─ config.py     # 配置加载与校验
-│  ├─ db.py         # SQLite 持久化
-│  ├─ models.py     # 数据模型
-│  └─ pipeline.py   # 主流程编排
-├─ scripts/         # 运行与打包脚本
-├─ tests/           # 基础测试
-├─ docs/            # 规划文档
+│  ├─ clients/      # arXiv / OpenAI / SMTP clients
+│  ├─ prompts/      # external LLM prompt templates
+│  ├─ render/       # Markdown / HTML rendering
+│  ├─ services/     # ingest / filter / summarize / detail / digest / delivery
+│  ├─ cli.py        # CLI entrypoint
+│  ├─ config.py     # config loading and validation
+│  ├─ db.py         # SQLite persistence
+│  ├─ models.py     # data models
+│  └─ pipeline.py   # pipeline orchestration
+├─ scripts/
+├─ tests/
+├─ docs/
 ├─ config.example.toml
 ├─ .env.example
 └─ ecosystem.config.cjs
 ```
 
-## 已知限制
+## Known Limitations
 
-- 摘要和相关性判断目前只基于 title + abstract，不读取 PDF 全文
-- LLM prompt 还写在代码里，没有独立版本化管理
-- OpenAI / SMTP 目前还没有自动重试与退避
-- 没有提供 backfill、replay、告警、监控、Docker 部署
-- `section_strategy` 等部分配置项已经预留，但还没有完整发挥作用
+- Delivery retry and backoff for OpenAI / SMTP are still limited.
+- Prompt templates are externalized, but prompt versioning is still code-driven rather than independently managed.
+- There is no built-in backfill, replay, alerting, monitoring, or Docker deployment workflow yet.
+- `section_strategy` is present as a config field, but broader sectioning strategies are not fully implemented.
 
 ## License
 

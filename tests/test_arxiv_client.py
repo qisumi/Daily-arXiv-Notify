@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import logging
+from pathlib import Path
 
 import httpx
 
@@ -163,5 +164,30 @@ def test_arxiv_client_logs_raw_and_unique_paper_counts(monkeypatch, caplog) -> N
     assert len(papers) == 1
     assert "Fetched 2 raw arXiv API entries before deduplication" in caplog.text
     assert "Fetched 1 unique papers from arXiv across 2 categories" in caplog.text
+
+    client.close()
+
+
+def test_arxiv_client_downloads_and_validates_pdf(tmp_path: Path) -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            request=request,
+            headers={"Content-Type": "application/pdf"},
+            content=b"%PDF-1.4\n%fake pdf\n",
+        )
+
+    client = ArxivClient(request_delay_seconds=0.0, max_retries=0, retry_backoff_seconds=5.0)
+    _swap_transport(client, httpx.MockTransport(handler))
+
+    downloaded = client.download_pdf(
+        pdf_url="https://arxiv.org/pdf/1234.5678.pdf",
+        destination=tmp_path / "paper.pdf",
+        max_file_size_mb=1,
+        timeout_seconds=30,
+    )
+
+    assert downloaded.exists()
+    assert downloaded.read_bytes().startswith(b"%PDF-")
 
     client.close()

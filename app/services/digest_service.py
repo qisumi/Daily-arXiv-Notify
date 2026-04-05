@@ -29,6 +29,7 @@ class DigestService:
             total_rule_matched=total_rule_matched,
             candidates=candidates,
             content_language=self.settings.llm.output_language,
+            include_detailed_exploration=self.settings.pdf_enrichment.enabled,
         )
         html = render_digest_html(markdown)
         digest_date = run_time.astimezone(self.settings.tzinfo).date().isoformat()

@@ -28,9 +28,20 @@ endpoint = "/responses"
 api_key = ""
 classify_model = "gpt-5-mini"
 summarize_model = "gpt-5.4"
-output_language = "English"
-reasoning_effort = "low"
+detail_model = "gpt-5.4"
+output_language = "Chinese"
+reasoning_effort = "high"
+detail_reasoning_effort = "high"
 timeout_seconds = 120
+
+[pdf_enrichment]
+enabled = true
+download_dir = "data/pdfs"
+max_file_size_mb = 40
+timeout_seconds = 180
+max_retries = 2
+retry_backoff_seconds = 10.0
+upload_expires_after_hours = 24
 
 [digest]
 max_papers = 12

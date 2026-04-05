@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
-from app.models import KeywordFilterResult, PaperSummaryResult, RunRecord
+from app.models import KeywordFilterResult, PaperDetailResult, PaperSummaryResult, RunRecord
 
 
 def _json_dumps(value: Any) -> str:
@@ -112,6 +112,36 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_summary_cache
                     ON paper_summaries(paper_id, prompt_version, model_name);
 
+                CREATE TABLE IF NOT EXISTS paper_details (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id INTEGER NOT NULL,
+                    paper_id INTEGER NOT NULL,
+                    source TEXT NOT NULL,
+                    headline TEXT NOT NULL,
+                    contribution_summary TEXT NOT NULL DEFAULT '',
+                    problem_and_context TEXT NOT NULL DEFAULT '',
+                    research_question TEXT NOT NULL,
+                    method_overview TEXT NOT NULL,
+                    novelty_and_positioning TEXT NOT NULL DEFAULT '',
+                    experimental_setup TEXT NOT NULL DEFAULT '',
+                    key_findings_json TEXT NOT NULL,
+                    evidence_and_credibility TEXT NOT NULL DEFAULT '',
+                    strengths_json TEXT NOT NULL,
+                    limitations_json TEXT NOT NULL,
+                    practical_implications_json TEXT NOT NULL DEFAULT '[]',
+                    open_questions_json TEXT NOT NULL DEFAULT '[]',
+                    relevance_to_keywords TEXT NOT NULL,
+                    reading_guide_json TEXT NOT NULL,
+                    model_name TEXT NOT NULL,
+                    prompt_version TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(run_id) REFERENCES runs(id),
+                    FOREIGN KEY(paper_id) REFERENCES papers(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_detail_cache
+                    ON paper_details(paper_id, prompt_version, model_name);
+
                 CREATE TABLE IF NOT EXISTS digests (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     run_id INTEGER NOT NULL UNIQUE,
@@ -125,6 +155,35 @@ class Database:
                 );
                 """
             )
+            self._ensure_table_columns(
+                conn,
+                "paper_details",
+                {
+                    "contribution_summary": "TEXT NOT NULL DEFAULT ''",
+                    "problem_and_context": "TEXT NOT NULL DEFAULT ''",
+                    "novelty_and_positioning": "TEXT NOT NULL DEFAULT ''",
+                    "experimental_setup": "TEXT NOT NULL DEFAULT ''",
+                    "evidence_and_credibility": "TEXT NOT NULL DEFAULT ''",
+                    "practical_implications_json": "TEXT NOT NULL DEFAULT '[]'",
+                    "open_questions_json": "TEXT NOT NULL DEFAULT '[]'",
+                },
+            )
+
+    def _ensure_table_columns(
+        self,
+        conn: sqlite3.Connection,
+        table_name: str,
+        columns: dict[str, str],
+    ) -> None:
+        existing = {
+            str(row["name"])
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
+        for column_name, definition in columns.items():
+            if column_name not in existing:
+                conn.execute(
+                    f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+                )
 
     def create_run(
         self,
@@ -370,6 +429,96 @@ class Database:
                     summary.why_it_matters,
                     summary.limitations,
                     _json_dumps(summary.tags),
+                    model_name,
+                    prompt_version,
+                    created_at.isoformat(),
+                ),
+            )
+
+    def get_cached_detail(
+        self,
+        *,
+        paper_id: int,
+        model_name: str,
+        prompt_version: str,
+    ) -> PaperDetailResult | None:
+        row = self._connection.execute(
+            """
+            SELECT source, headline, contribution_summary, problem_and_context,
+                   research_question, method_overview, novelty_and_positioning,
+                   experimental_setup, key_findings_json, evidence_and_credibility,
+                   strengths_json, limitations_json, practical_implications_json,
+                   open_questions_json, relevance_to_keywords, reading_guide_json
+            FROM paper_details
+            WHERE paper_id = ? AND model_name = ? AND prompt_version = ?
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (paper_id, model_name, prompt_version),
+        ).fetchone()
+        if row is None:
+            return None
+        return PaperDetailResult(
+            source=row["source"],
+            headline=row["headline"],
+            contribution_summary=row["contribution_summary"],
+            problem_and_context=row["problem_and_context"],
+            research_question=row["research_question"],
+            method_overview=row["method_overview"],
+            novelty_and_positioning=row["novelty_and_positioning"],
+            experimental_setup=row["experimental_setup"],
+            key_findings=json.loads(row["key_findings_json"]),
+            evidence_and_credibility=row["evidence_and_credibility"],
+            strengths=json.loads(row["strengths_json"]),
+            limitations=json.loads(row["limitations_json"]),
+            practical_implications=json.loads(row["practical_implications_json"]),
+            open_questions=json.loads(row["open_questions_json"]),
+            relevance_to_keywords=row["relevance_to_keywords"],
+            reading_guide=json.loads(row["reading_guide_json"]),
+        )
+
+    def insert_detail(
+        self,
+        *,
+        run_id: int,
+        paper_id: int,
+        detail: PaperDetailResult,
+        model_name: str,
+        prompt_version: str,
+        created_at: datetime,
+    ) -> None:
+        with self.transaction() as conn:
+            conn.execute(
+                """
+                INSERT INTO paper_details (
+                    run_id, paper_id, source, headline, contribution_summary,
+                    problem_and_context, research_question, method_overview,
+                    novelty_and_positioning, experimental_setup, key_findings_json,
+                    evidence_and_credibility, strengths_json, limitations_json,
+                    practical_implications_json, open_questions_json,
+                    relevance_to_keywords, reading_guide_json, model_name,
+                    prompt_version, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    run_id,
+                    paper_id,
+                    detail.source,
+                    detail.headline,
+                    detail.contribution_summary,
+                    detail.problem_and_context,
+                    detail.research_question,
+                    detail.method_overview,
+                    detail.novelty_and_positioning,
+                    detail.experimental_setup,
+                    _json_dumps(detail.key_findings),
+                    detail.evidence_and_credibility,
+                    _json_dumps(detail.strengths),
+                    _json_dumps(detail.limitations),
+                    _json_dumps(detail.practical_implications),
+                    _json_dumps(detail.open_questions),
+                    detail.relevance_to_keywords,
+                    _json_dumps(detail.reading_guide),
                     model_name,
                     prompt_version,
                     created_at.isoformat(),

@@ -6,6 +6,7 @@ import time
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import Iterable
 
 import httpx
@@ -21,6 +22,10 @@ ATOM_NS = {
 VERSION_PATTERN = re.compile(r"^(?P<id>.+?)(?P<version>v\d+)?$")
 RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 DEFAULT_ARXIV_BASE_URL = "https://export.arxiv.org"
+
+
+class PDFDownloadError(RuntimeError):
+    """Raised when a paper PDF cannot be downloaded or validated."""
 
 
 class ArxivClient:
@@ -142,11 +147,16 @@ class ArxivClient:
         self,
         path: str,
         *,
-        params: dict[str, str | int],
+        params: dict[str, str | int] | None = None,
+        timeout_seconds: int | None = None,
     ) -> httpx.Response:
         for attempt in range(self.max_retries + 1):
             try:
-                response = self._send_get_request(path, params=params)
+                response = self._send_get_request(
+                    path,
+                    params=params,
+                    timeout_seconds=timeout_seconds,
+                )
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as exc:
@@ -177,11 +187,59 @@ class ArxivClient:
         self,
         path: str,
         *,
-        params: dict[str, str | int],
+        params: dict[str, str | int] | None = None,
+        timeout_seconds: int | None = None,
     ) -> httpx.Response:
         self._wait_for_request_slot()
         self._last_request_started_at = time.monotonic()
-        return self._client.get(path, params=params)
+        return self._client.get(path, params=params, timeout=timeout_seconds)
+
+    def download_pdf(
+        self,
+        *,
+        pdf_url: str,
+        destination: Path,
+        max_file_size_mb: int,
+        timeout_seconds: int | None = None,
+    ) -> Path:
+        if destination.exists() and destination.stat().st_size > 0:
+            return destination
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        max_bytes = max_file_size_mb * 1024 * 1024
+
+        try:
+            response = self._get_with_retries(pdf_url, timeout_seconds=timeout_seconds)
+            content = response.content
+        except Exception as exc:  # pragma: no cover - exercised through fallback paths
+            raise PDFDownloadError(f"Failed to download PDF from {pdf_url}") from exc
+
+        content_length = response.headers.get("Content-Length", "").strip()
+        if content_length:
+            try:
+                if int(content_length) > max_bytes:
+                    raise PDFDownloadError(
+                        f"PDF exceeds the configured size limit of {max_file_size_mb} MB."
+                    )
+            except ValueError:
+                pass
+
+        if len(content) > max_bytes:
+            raise PDFDownloadError(
+                f"PDF exceeds the configured size limit of {max_file_size_mb} MB."
+            )
+
+        if not content:
+            raise PDFDownloadError("Downloaded PDF is empty.")
+
+        content_type = response.headers.get("Content-Type", "").lower()
+        if "pdf" not in content_type and not content.startswith(b"%PDF-"):
+            raise PDFDownloadError(
+                "Downloaded content does not look like a valid PDF document."
+            )
+
+        destination.write_bytes(content)
+        return destination
 
     def _wait_for_request_slot(self) -> None:
         if self.request_delay_seconds <= 0 or self._last_request_started_at is None:
