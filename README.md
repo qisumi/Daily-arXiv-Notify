@@ -117,7 +117,9 @@ max_pages = 5
 overlap_hours = 36
 request_delay_seconds = 3.0
 max_retries = 3
+max_rate_limit_retries = 6
 retry_backoff_seconds = 15.0
+min_rate_limit_delay_seconds = 60.0
 
 [filtering]
 include_keywords = ["time series"]
@@ -235,7 +237,9 @@ Supported secret overrides:
 | `arxiv.overlap_hours` | Overlap with the previous successful run to reduce misses. |
 | `arxiv.request_delay_seconds` | Minimum delay between arXiv requests. |
 | `arxiv.max_retries` | Retry count for transient arXiv failures. |
+| `arxiv.max_rate_limit_retries` | Extra retry budget used specifically for HTTP 429 rate limiting. |
 | `arxiv.retry_backoff_seconds` | Base retry backoff for arXiv requests. |
+| `arxiv.min_rate_limit_delay_seconds` | Conservative fallback delay when arXiv returns HTTP 429 without `Retry-After`. |
 | `filtering.include_keywords` | Required keywords for the first rule-based pass. |
 | `filtering.exclude_keywords` | Keywords that immediately exclude a paper. |
 | `filtering.ai_target_keywords` | Keywords used by the LLM to judge relevance. |

@@ -12,7 +12,9 @@ max_pages = 5
 overlap_hours = 36
 request_delay_seconds = 3.0
 max_retries = 3
+max_rate_limit_retries = 6
 retry_backoff_seconds = 15.0
+min_rate_limit_delay_seconds = 60.0
 
 [filtering]
 include_keywords = ["time series"]

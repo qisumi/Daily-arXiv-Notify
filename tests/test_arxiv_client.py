@@ -100,6 +100,50 @@ def test_arxiv_client_retries_429_with_retry_after(monkeypatch) -> None:
     client.close()
 
 
+def test_arxiv_client_uses_extended_retry_budget_for_429_without_retry_after(
+    monkeypatch,
+) -> None:
+    clock = FakeClock()
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        if call_count <= 3:
+            return httpx.Response(429, request=request, text="rate limited")
+        return httpx.Response(
+            200,
+            request=request,
+            text=_make_feed("2503.00001v1", "cs.AI"),
+        )
+
+    monkeypatch.setattr("app.clients.arxiv_client.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("app.clients.arxiv_client.time.sleep", clock.sleep)
+
+    client = ArxivClient(
+        request_delay_seconds=3.0,
+        max_retries=1,
+        max_rate_limit_retries=3,
+        retry_backoff_seconds=5.0,
+        min_rate_limit_delay_seconds=20.0,
+    )
+    _swap_transport(client, httpx.MockTransport(handler))
+
+    papers = client.fetch_papers(
+        categories=["cs.AI"],
+        window=_make_window(),
+        page_size=100,
+        max_pages=1,
+        include_revisions=False,
+    )
+
+    assert len(papers) == 1
+    assert call_count == 4
+    assert clock.sleeps == [20.0, 20.0, 20.0]
+
+    client.close()
+
+
 def test_arxiv_client_spaces_requests_across_categories(monkeypatch) -> None:
     clock = FakeClock()
     calls: list[str] = []

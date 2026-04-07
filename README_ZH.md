@@ -117,7 +117,9 @@ max_pages = 5
 overlap_hours = 36
 request_delay_seconds = 3.0
 max_retries = 3
+max_rate_limit_retries = 6
 retry_backoff_seconds = 15.0
+min_rate_limit_delay_seconds = 60.0
 
 [filtering]
 include_keywords = ["time series"]
@@ -235,7 +237,9 @@ daily-arxiv-notify run-once --help
 | `arxiv.overlap_hours` | 与上次成功运行的重叠时间，用于降低漏抓风险。 |
 | `arxiv.request_delay_seconds` | 两次 arXiv 请求之间的最小间隔秒数。 |
 | `arxiv.max_retries` | arXiv 短暂失败时的最大重试次数。 |
+| `arxiv.max_rate_limit_retries` | 针对 HTTP 429 限流额外提供的重试次数。 |
 | `arxiv.retry_backoff_seconds` | arXiv 请求的重试退避基线秒数。 |
+| `arxiv.min_rate_limit_delay_seconds` | 当 arXiv 返回 HTTP 429 且未提供 `Retry-After` 时使用的保守等待秒数。 |
 | `filtering.include_keywords` | 首轮规则过滤要求命中的关键词。 |
 | `filtering.exclude_keywords` | 命中后立即排除论文的关键词。 |
 | `filtering.ai_target_keywords` | LLM 用于判断相关性的目标关键词。 |

@@ -174,7 +174,9 @@ def test_load_settings_reads_arxiv_retry_settings(tmp_path: Path) -> None:
                     "overlap_hours = 36",
                     "request_delay_seconds = 4.5",
                     "max_retries = 6",
+                    "max_rate_limit_retries = 8",
                     "retry_backoff_seconds = 20.0",
+                    "min_rate_limit_delay_seconds = 90.0",
                 ]
             ),
         ),
@@ -196,7 +198,9 @@ def test_load_settings_reads_arxiv_retry_settings(tmp_path: Path) -> None:
 
     assert settings.arxiv.request_delay_seconds == 4.5
     assert settings.arxiv.max_retries == 6
+    assert settings.arxiv.max_rate_limit_retries == 8
     assert settings.arxiv.retry_backoff_seconds == 20.0
+    assert settings.arxiv.min_rate_limit_delay_seconds == 90.0
 
 
 def test_load_settings_reads_pdf_enrichment_settings(tmp_path: Path) -> None:

@@ -34,13 +34,17 @@ class ArxivClient:
         *,
         request_delay_seconds: float = 3.0,
         max_retries: int = 3,
+        max_rate_limit_retries: int = 6,
         retry_backoff_seconds: float = 15.0,
+        min_rate_limit_delay_seconds: float = 60.0,
         timeout_seconds: int = 30,
         user_agent: str = "Daily-arXiv-notify/0.1",
     ) -> None:
         self.request_delay_seconds = request_delay_seconds
         self.max_retries = max_retries
+        self.max_rate_limit_retries = max_rate_limit_retries
         self.retry_backoff_seconds = retry_backoff_seconds
+        self.min_rate_limit_delay_seconds = min_rate_limit_delay_seconds
         self.logger = logging.getLogger(__name__)
         self._last_request_started_at: float | None = None
         self._client = httpx.Client(
@@ -150,7 +154,8 @@ class ArxivClient:
         params: dict[str, str | int] | None = None,
         timeout_seconds: int | None = None,
     ) -> httpx.Response:
-        for attempt in range(self.max_retries + 1):
+        attempt = 0
+        while True:
             try:
                 response = self._send_get_request(
                     path,
@@ -160,9 +165,10 @@ class ArxivClient:
                 response.raise_for_status()
                 return response
             except httpx.HTTPStatusError as exc:
+                retry_limit = self._retry_limit_for_status(exc.response.status_code)
                 if (
                     exc.response.status_code not in RETRYABLE_STATUS_CODES
-                    or attempt >= self.max_retries
+                    or attempt >= retry_limit
                 ):
                     raise
                 self._sleep_before_retry(
@@ -170,6 +176,7 @@ class ArxivClient:
                     reason=f"HTTP {exc.response.status_code}",
                     url=str(exc.request.url),
                     retry_number=attempt + 1,
+                    retry_limit=retry_limit,
                 )
             except httpx.RequestError as exc:
                 if attempt >= self.max_retries:
@@ -179,7 +186,9 @@ class ArxivClient:
                     reason=exc.__class__.__name__,
                     url=str(exc.request.url),
                     retry_number=attempt + 1,
+                    retry_limit=self.max_retries,
                 )
+            attempt += 1
 
         raise RuntimeError("Unreachable arXiv retry loop")  # pragma: no cover
 
@@ -257,13 +266,14 @@ class ArxivClient:
         reason: str,
         url: str,
         retry_number: int,
+        retry_limit: int,
     ) -> None:
         self.logger.warning(
             "Transient arXiv request failure (%s). Retrying in %.1f seconds (%s/%s): %s",
             reason,
             delay,
             retry_number,
-            self.max_retries,
+            retry_limit,
             url,
         )
         time.sleep(delay)
@@ -275,9 +285,16 @@ class ArxivClient:
     ) -> float:
         delay = self.retry_backoff_seconds * (2**attempt)
         retry_after = self._retry_after_seconds(response)
-        if retry_after is None:
-            return delay
-        return max(delay, retry_after)
+        if retry_after is not None:
+            return max(delay, retry_after)
+        if response is not None and response.status_code == 429:
+            return max(delay, self.min_rate_limit_delay_seconds)
+        return delay
+
+    def _retry_limit_for_status(self, status_code: int) -> int:
+        if status_code == 429:
+            return max(self.max_retries, self.max_rate_limit_retries)
+        return self.max_retries
 
     @staticmethod
     def _retry_after_seconds(response: httpx.Response | None) -> float | None:

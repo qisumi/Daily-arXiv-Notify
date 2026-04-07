@@ -43,7 +43,9 @@ class ArxivSettings:
     overlap_hours: int = 36
     request_delay_seconds: float = 3.0
     max_retries: int = 3
+    max_rate_limit_retries: int = 6
     retry_backoff_seconds: float = 15.0
+    min_rate_limit_delay_seconds: float = 60.0
 
 
 @dataclass(slots=True)
@@ -275,8 +277,14 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
             merged["arxiv"].get("request_delay_seconds", 3.0)
         ),
         max_retries=int(merged["arxiv"].get("max_retries", 3)),
+        max_rate_limit_retries=int(
+            merged["arxiv"].get("max_rate_limit_retries", 6)
+        ),
         retry_backoff_seconds=float(
             merged["arxiv"].get("retry_backoff_seconds", 15.0)
+        ),
+        min_rate_limit_delay_seconds=float(
+            merged["arxiv"].get("min_rate_limit_delay_seconds", 60.0)
         ),
     )
     filtering = FilteringSettings(
@@ -395,8 +403,12 @@ def _validate_settings(settings: Settings) -> None:
         raise ConfigError("arxiv.request_delay_seconds must be >= 0")
     if settings.arxiv.max_retries < 0:
         raise ConfigError("arxiv.max_retries must be >= 0")
+    if settings.arxiv.max_rate_limit_retries < 0:
+        raise ConfigError("arxiv.max_rate_limit_retries must be >= 0")
     if settings.arxiv.retry_backoff_seconds < 0:
         raise ConfigError("arxiv.retry_backoff_seconds must be >= 0")
+    if settings.arxiv.min_rate_limit_delay_seconds < 0:
+        raise ConfigError("arxiv.min_rate_limit_delay_seconds must be >= 0")
     if settings.pdf_enrichment.max_file_size_mb <= 0:
         raise ConfigError("pdf_enrichment.max_file_size_mb must be > 0")
     if settings.pdf_enrichment.timeout_seconds <= 0:

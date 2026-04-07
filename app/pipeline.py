@@ -26,14 +26,18 @@ class DailyDigestPipeline:
         self.arxiv_client = ArxivClient(
             request_delay_seconds=settings.arxiv.request_delay_seconds,
             max_retries=settings.arxiv.max_retries,
+            max_rate_limit_retries=settings.arxiv.max_rate_limit_retries,
             retry_backoff_seconds=settings.arxiv.retry_backoff_seconds,
+            min_rate_limit_delay_seconds=settings.arxiv.min_rate_limit_delay_seconds,
             user_agent=f"Daily-arXiv-notify/0.1 ({settings.email.from_address})",
         )
         self.pdf_arxiv_client = (
             ArxivClient(
                 request_delay_seconds=settings.arxiv.request_delay_seconds,
                 max_retries=settings.pdf_enrichment.max_retries,
+                max_rate_limit_retries=settings.arxiv.max_rate_limit_retries,
                 retry_backoff_seconds=settings.pdf_enrichment.retry_backoff_seconds,
+                min_rate_limit_delay_seconds=settings.arxiv.min_rate_limit_delay_seconds,
                 timeout_seconds=settings.pdf_enrichment.timeout_seconds,
                 user_agent=f"Daily-arXiv-notify/0.1 ({settings.email.from_address})",
             )
