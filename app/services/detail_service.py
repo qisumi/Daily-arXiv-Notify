@@ -48,15 +48,22 @@ class DetailService:
             prompt_version=self.prompt_version,
         )
         if cached is not None:
-            self.database.insert_detail(
-                run_id=run_id,
-                paper_id=paper_id,
-                detail=cached,
-                model_name=self.settings.llm.effective_detail_model,
-                prompt_version=self.prompt_version,
-                created_at=datetime.now(timezone.utc),
-            )
-            return cached
+            if cached.source != "pdf":
+                self.logger.info(
+                    "Ignoring cached non-PDF detail for %s (source=%s); retrying PDF enrichment.",
+                    paper.arxiv_id,
+                    cached.source,
+                )
+            else:
+                self.database.insert_detail(
+                    run_id=run_id,
+                    paper_id=paper_id,
+                    detail=cached,
+                    model_name=self.settings.llm.effective_detail_model,
+                    prompt_version=self.prompt_version,
+                    created_at=datetime.now(timezone.utc),
+                )
+                return cached
 
         try:
             pdf_path = self.arxiv_client.download_pdf(

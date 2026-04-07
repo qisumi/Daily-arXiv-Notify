@@ -210,6 +210,62 @@ def test_detail_service_uses_cached_detail_without_re_downloading(tmp_path: Path
     db.close()
 
 
+def test_detail_service_ignores_cached_abstract_fallback_and_retries_pdf_enrichment(
+    tmp_path: Path,
+) -> None:
+    settings = _make_settings(tmp_path)
+    db = Database(settings.database.sqlite_path)
+    db.initialize()
+    paper = _make_paper()
+    run_id, paper_id = _create_run_and_paper(db, paper)
+    cached_fallback = PaperDetailResult(
+        source="abstract_fallback",
+        headline="Fallback headline",
+        contribution_summary="Fallback contribution summary",
+        problem_and_context="Fallback problem and context",
+        research_question="Fallback research question",
+        method_overview="Fallback method overview",
+        novelty_and_positioning="Fallback novelty",
+        experimental_setup="Fallback setup",
+        key_findings=["Fallback finding"],
+        evidence_and_credibility="Fallback evidence",
+        strengths=["Fallback strength"],
+        limitations=["Fallback limitation"],
+        practical_implications=["Fallback practical implication"],
+        open_questions=["Fallback open question"],
+        relevance_to_keywords="Fallback relevance",
+        reading_guide=["Fallback reading guide"],
+    )
+    db.insert_detail(
+        run_id=run_id,
+        paper_id=paper_id,
+        detail=cached_fallback,
+        model_name=settings.llm.effective_detail_model,
+        prompt_version="paper-detail-v2-english",
+        created_at=datetime.now(timezone.utc),
+    )
+    fake_arxiv = FakeArxivClient()
+    fake_llm = FakeOpenAIClient(detail=_make_detail())
+    service = DetailService(settings, db, fake_llm, fake_arxiv)  # type: ignore[arg-type]
+
+    result = service.build_detail(
+        run_id=run_id,
+        paper_id=paper_id,
+        paper=paper,
+        ai_result=KeywordFilterResult(
+            is_related=True,
+            matched_keywords=["agent"],
+            reason="Relevant.",
+        ),
+        summary_result=_make_summary(),
+    )
+
+    assert result.source == "pdf"
+    assert len(fake_arxiv.calls) == 1
+    assert len(fake_llm.calls) == 1
+    db.close()
+
+
 def test_detail_service_falls_back_when_pdf_download_fails(tmp_path: Path) -> None:
     settings = _make_settings(tmp_path)
     db = Database(settings.database.sqlite_path)
