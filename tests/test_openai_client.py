@@ -9,12 +9,15 @@ from app.models import PaperDetailResult
 
 
 class FakeResponsesAPI:
-    def __init__(self, parsed) -> None:
+    def __init__(self, parsed, errors: list[Exception] | None = None) -> None:
         self.parsed = parsed
+        self.errors = list(errors or [])
         self.calls: list[dict] = []
 
     def parse(self, **kwargs):
         self.calls.append(kwargs)
+        if self.errors:
+            raise self.errors.pop(0)
         return SimpleNamespace(output_parsed=self.parsed)
 
 
@@ -31,12 +34,28 @@ class FakeChatAPI:
 
 
 class FakeFilesAPI:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        *,
+        create_status: str | None = None,
+        retrieve_statuses: list[str] | None = None,
+    ) -> None:
+        self.create_status = create_status
+        self.retrieve_statuses = list(retrieve_statuses or [])
         self.calls: list[dict] = []
+        self.retrieve_calls: list[str] = []
 
     def create(self, **kwargs):
         self.calls.append(kwargs)
-        return SimpleNamespace(id="file-123")
+        payload = {"id": "file-123"}
+        if self.create_status is not None:
+            payload["status"] = self.create_status
+        return SimpleNamespace(**payload)
+
+    def retrieve(self, file_id: str):
+        self.retrieve_calls.append(file_id)
+        status = self.retrieve_statuses.pop(0) if self.retrieve_statuses else "processed"
+        return SimpleNamespace(id=file_id, status=status)
 
 
 def _make_settings(endpoint: str, output_language: str = "English") -> LLMSettings:
@@ -172,3 +191,109 @@ def test_openai_client_uploads_pdf_and_uses_detail_model(tmp_path: Path):
     input_payload = fake_responses.calls[0]["input"]
     assert input_payload[1]["content"][1] == {"type": "input_file", "file_id": "file-123"}
     assert "comprehensive but scannable paper analysis" in input_payload[1]["content"][0]["text"]
+
+
+def test_openai_client_waits_for_uploaded_pdf_processing(tmp_path: Path, monkeypatch) -> None:
+    client = OpenAIClient(_make_settings("/responses"))
+    fake_responses = FakeResponsesAPI(
+        parsed=PaperDetailResult(
+            source="pdf",
+            headline="Detailed headline",
+            contribution_summary="Contribution summary",
+            problem_and_context="Problem and context",
+            research_question="What is the paper solving?",
+            method_overview="A PDF-grounded method overview.",
+            novelty_and_positioning="Novelty and positioning",
+            experimental_setup="Experimental setup",
+            key_findings=["Finding 1"],
+            evidence_and_credibility="Evidence and credibility",
+            strengths=["Strength 1"],
+            limitations=["Limitation 1"],
+            practical_implications=["Practical implication 1"],
+            open_questions=["Open question 1"],
+            relevance_to_keywords="Relevant to the configured focus.",
+            reading_guide=["Read the experiments."],
+        )
+    )
+    fake_files = FakeFilesAPI(
+        create_status="processing",
+        retrieve_statuses=["processing", "processed"],
+    )
+    client._client = SimpleNamespace(
+        responses=fake_responses,
+        files=fake_files,
+        beta=SimpleNamespace(chat=SimpleNamespace(completions=FakeChatAPI(parsed=None))),
+    )
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(
+        "app.clients.openai_client.time.sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%fake pdf\n")
+
+    result = client.analyze_paper_pdf(
+        pdf_path=pdf_path,
+        title="Agent paper",
+        abstract="This paper studies agent systems.",
+        matched_keywords=["agent"],
+        upload_expires_after_hours=24,
+    )
+
+    assert result.source == "pdf"
+    assert fake_files.retrieve_calls == ["file-123", "file-123"]
+    assert sleep_calls == [client.FILE_READY_POLL_SECONDS]
+    assert len(fake_responses.calls) == 1
+
+
+def test_openai_client_retries_when_response_api_sees_processing_file(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    client = OpenAIClient(_make_settings("/responses"))
+    fake_responses = FakeResponsesAPI(
+        parsed=PaperDetailResult(
+            source="pdf",
+            headline="Detailed headline",
+            contribution_summary="Contribution summary",
+            problem_and_context="Problem and context",
+            research_question="What is the paper solving?",
+            method_overview="A PDF-grounded method overview.",
+            novelty_and_positioning="Novelty and positioning",
+            experimental_setup="Experimental setup",
+            key_findings=["Finding 1"],
+            evidence_and_credibility="Evidence and credibility",
+            strengths=["Strength 1"],
+            limitations=["Limitation 1"],
+            practical_implications=["Practical implication 1"],
+            open_questions=["Open question 1"],
+            relevance_to_keywords="Relevant to the configured focus.",
+            reading_guide=["Read the experiments."],
+        ),
+        errors=[
+            RuntimeError(
+                "OperationDenied.InvalidState: The specified file file-123 is in invalid state: processing. param: file_id"
+            )
+        ],
+    )
+    fake_files = FakeFilesAPI(create_status="processed", retrieve_statuses=["processed"])
+    client._client = SimpleNamespace(
+        responses=fake_responses,
+        files=fake_files,
+        beta=SimpleNamespace(chat=SimpleNamespace(completions=FakeChatAPI(parsed=None))),
+    )
+    monkeypatch.setattr("app.clients.openai_client.time.sleep", lambda _: None)
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%fake pdf\n")
+
+    result = client.analyze_paper_pdf(
+        pdf_path=pdf_path,
+        title="Agent paper",
+        abstract="This paper studies agent systems.",
+        matched_keywords=["agent"],
+        upload_expires_after_hours=24,
+    )
+
+    assert result.source == "pdf"
+    assert len(fake_responses.calls) == 2
+    assert fake_files.retrieve_calls == ["file-123"]
