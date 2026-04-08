@@ -80,7 +80,12 @@ class DetailService:
                 upload_expires_after_hours=self.settings.pdf_enrichment.upload_expires_after_hours,
             )
         except Exception:
-            self.logger.exception("PDF detail analysis failed for %s", paper.arxiv_id)
+            self.logger.exception(
+                "PDF detail analysis failed for %s (pdf_download_timeout=%ss, detail_timeout=%ss)",
+                paper.arxiv_id,
+                self.settings.pdf_enrichment.timeout_seconds,
+                self.settings.llm.effective_detail_timeout_seconds,
+            )
             detail = self._fallback_detail(
                 paper=paper,
                 ai_result=ai_result,

@@ -243,6 +243,7 @@ class OpenAIClient:
                     reasoning={
                         "effort": self.settings.effective_detail_reasoning_effort,
                     },
+                    timeout=self.settings.effective_detail_timeout_seconds,
                 )
                 if response.output_parsed is None:  # pragma: no cover
                     raise RuntimeError("OpenAI detail analysis returned no parsed output.")
@@ -265,7 +266,7 @@ class OpenAIClient:
         uploaded_file: Any | None = None,
     ) -> None:
         deadline = time.monotonic() + max(
-            float(self.settings.timeout_seconds),
+            float(self.settings.effective_detail_timeout_seconds),
             self.FILE_READY_TIMEOUT_FLOOR_SECONDS,
         )
         file_object = uploaded_file

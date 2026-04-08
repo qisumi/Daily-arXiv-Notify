@@ -37,6 +37,7 @@ detail_model = "doubao-seed-2-0-pro-260215"
 detail_reasoning_effort = "high"
 reasoning_effort = "low"
 timeout_seconds = 30
+detail_timeout_seconds = 300
 
 [digest]
 max_papers = 10
@@ -236,12 +237,40 @@ upload_expires_after_hours = 36
 
     assert settings.llm.detail_model == "doubao-seed-2-0-pro-260215"
     assert settings.llm.effective_detail_reasoning_effort == "high"
+    assert settings.llm.effective_detail_timeout_seconds == 300
     assert settings.pdf_enrichment.enabled is True
     assert settings.pdf_enrichment.max_file_size_mb == 25
     assert settings.pdf_enrichment.timeout_seconds == 240
     assert settings.pdf_enrichment.max_retries == 4
     assert settings.pdf_enrichment.retry_backoff_seconds == 12.5
     assert settings.pdf_enrichment.upload_expires_after_hours == 36
+
+
+def test_load_settings_reads_detail_timeout_override(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE.replace(
+            'detail_timeout_seconds = 300',
+            'detail_timeout_seconds = 480',
+        ),
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.llm.timeout_seconds == 30
+    assert settings.llm.effective_detail_timeout_seconds == 480
 
 
 def test_load_settings_requires_responses_endpoint_for_pdf_enrichment(tmp_path: Path) -> None:

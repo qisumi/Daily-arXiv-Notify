@@ -71,6 +71,7 @@ def _make_settings(endpoint: str, output_language: str = "English") -> LLMSettin
         reasoning_effort="low",
         detail_reasoning_effort="high",
         timeout_seconds=30,
+        detail_timeout_seconds=300,
     )
 
 
@@ -188,6 +189,7 @@ def test_openai_client_uploads_pdf_and_uses_detail_model(tmp_path: Path):
     assert len(fake_responses.calls) == 1
     assert fake_responses.calls[0]["model"] == "doubao-seed-2-0-pro-260215"
     assert fake_responses.calls[0]["reasoning"] == {"effort": "high"}
+    assert fake_responses.calls[0]["timeout"] == 300
     input_payload = fake_responses.calls[0]["input"]
     assert input_payload[1]["content"][1] == {"type": "input_file", "file_id": "file-123"}
     assert "comprehensive but scannable paper analysis" in input_payload[1]["content"][0]["text"]

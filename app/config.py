@@ -68,6 +68,7 @@ class LLMSettings:
     reasoning_effort: str = "low"
     detail_reasoning_effort: str = ""
     timeout_seconds: int = 120
+    detail_timeout_seconds: int = 600
 
     @property
     def api_mode(self) -> str:
@@ -85,6 +86,10 @@ class LLMSettings:
     @property
     def effective_detail_reasoning_effort(self) -> str:
         return self.detail_reasoning_effort or self.reasoning_effort
+
+    @property
+    def effective_detail_timeout_seconds(self) -> int:
+        return max(self.timeout_seconds, self.detail_timeout_seconds)
 
 
 @dataclass(slots=True)
@@ -158,6 +163,7 @@ class Settings:
                 "reasoning_effort": self.llm.reasoning_effort,
                 "detail_reasoning_effort": self.llm.effective_detail_reasoning_effort,
                 "timeout_seconds": self.llm.timeout_seconds,
+                "detail_timeout_seconds": self.llm.effective_detail_timeout_seconds,
             },
             "digest": {
                 **asdict(self.digest),
@@ -310,6 +316,7 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
             merged["llm"].get("detail_reasoning_effort", "")
         ).strip(),
         timeout_seconds=int(merged["llm"].get("timeout_seconds", 120)),
+        detail_timeout_seconds=int(merged["llm"].get("detail_timeout_seconds", 600)),
     )
     digest = DigestSettings(
         max_papers=int(merged["digest"].get("max_papers", 12)),
@@ -399,6 +406,10 @@ def _validate_settings(settings: Settings) -> None:
             "pdf_enrichment.enabled requires llm.endpoint to end with '/responses'."
         )
 
+    if settings.llm.timeout_seconds <= 0:
+        raise ConfigError("llm.timeout_seconds must be > 0")
+    if settings.llm.detail_timeout_seconds <= 0:
+        raise ConfigError("llm.detail_timeout_seconds must be > 0")
     if settings.arxiv.request_delay_seconds < 0:
         raise ConfigError("arxiv.request_delay_seconds must be >= 0")
     if settings.arxiv.max_retries < 0:

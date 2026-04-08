@@ -35,6 +35,7 @@ output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
 timeout_seconds = 120
+detail_timeout_seconds = 600
 
 [pdf_enrichment]
 enabled = true

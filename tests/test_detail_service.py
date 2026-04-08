@@ -66,6 +66,7 @@ def _make_settings(tmp_path: Path) -> Settings:
             reasoning_effort="low",
             detail_reasoning_effort="high",
             timeout_seconds=30,
+            detail_timeout_seconds=300,
         ),
         digest=DigestSettings(
             max_papers=10,

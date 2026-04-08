@@ -140,6 +140,7 @@ output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
 timeout_seconds = 120
+detail_timeout_seconds = 600
 
 [pdf_enrichment]
 enabled = true
@@ -251,6 +252,7 @@ Supported secret overrides:
 | `llm.output_language` | Output language for summaries and deep analysis. |
 | `llm.reasoning_effort` | General reasoning setting and fallback detail reasoning value. |
 | `llm.detail_reasoning_effort` | Reasoning effort specifically for PDF detail analysis. |
+| `llm.detail_timeout_seconds` | Request timeout used only for PDF-grounded detail analysis. |
 | `pdf_enrichment.enabled` | Whether shortlisted PDFs should be downloaded and analyzed. |
 | `pdf_enrichment.download_dir` | Local directory for cached PDFs. |
 | `pdf_enrichment.max_file_size_mb` | Maximum allowed PDF size per paper. |

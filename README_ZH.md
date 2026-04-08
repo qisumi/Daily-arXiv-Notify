@@ -140,6 +140,7 @@ output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
 timeout_seconds = 120
+detail_timeout_seconds = 600
 
 [pdf_enrichment]
 enabled = true
@@ -251,6 +252,7 @@ daily-arxiv-notify run-once --help
 | `llm.output_language` | 摘要与深度解析的输出语言。 |
 | `llm.reasoning_effort` | 通用推理强度设置，也是 detail 推理的回退值。 |
 | `llm.detail_reasoning_effort` | 专用于 PDF 深度分析的推理强度。 |
+| `llm.detail_timeout_seconds` | 仅用于 PDF 深度分析请求的超时时间。 |
 | `pdf_enrichment.enabled` | 是否下载 shortlist 论文 PDF 并做深度分析。 |
 | `pdf_enrichment.download_dir` | PDF 本地缓存目录。 |
 | `pdf_enrichment.max_file_size_mb` | 单篇论文允许下载的最大 PDF 体积。 |
