@@ -9,6 +9,7 @@ from typing import Any
 from openai import OpenAI
 
 from app.config import LLMSettings
+from app.detail_source import PDF_DETAIL_SOURCE
 from app.models import KeywordFilterResult, PaperDetailResult, PaperSummaryResult
 from app.output_language import normalize_output_language
 from app.prompts.loader import render_prompt
@@ -247,7 +248,9 @@ class OpenAIClient:
                 )
                 if response.output_parsed is None:  # pragma: no cover
                     raise RuntimeError("OpenAI detail analysis returned no parsed output.")
-                return response.output_parsed
+                return response.output_parsed.model_copy(
+                    update={"source": PDF_DETAIL_SOURCE}
+                )
             except Exception as exc:
                 if attempt == 1 or not self._is_file_processing_error(exc):
                     raise

@@ -4,6 +4,12 @@ from collections import OrderedDict
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from app.detail_source import (
+    ABSTRACT_FALLBACK_DETAIL_SOURCE,
+    PDF_DETAIL_SOURCE,
+    is_pdf_detail_source,
+    normalize_detail_source,
+)
 from app.models import CandidatePaper
 from app.output_language import localize_output_text
 
@@ -39,7 +45,8 @@ def render_digest_markdown(
         detailed_count = sum(
             1
             for item in candidates
-            if item.detail_result is not None and item.detail_result.source == "pdf"
+            if item.detail_result is not None
+            and is_pdf_detail_source(item.detail_result.source)
         )
         lines.append(
             f"- {localize_output_text(content_language, english='Detailed analysis available', chinese='已完成 PDF 深度分析')}: {detailed_count} / {len(candidates)}"
@@ -218,8 +225,9 @@ def _render_section(
             ]
         )
         if include_detailed_exploration and item.detail_result is not None:
+            normalized_source = normalize_detail_source(item.detail_result.source)
             lines.append(
-                f"- {detail_source_label}: {_detail_source_label(item.detail_result.source, content_language)}"
+                f"- {detail_source_label}: {_detail_source_label(normalized_source, content_language)}"
             )
             lines.extend(
                 [
@@ -285,9 +293,9 @@ def _render_bullets(values: list[str]) -> list[str]:
 
 
 def _detail_source_label(source: str, content_language: str) -> str:
-    if source == "pdf":
+    if source == PDF_DETAIL_SOURCE:
         return "PDF"
-    if source == "abstract_fallback":
+    if source == ABSTRACT_FALLBACK_DETAIL_SOURCE:
         return localize_output_text(
             content_language,
             english="Abstract fallback",

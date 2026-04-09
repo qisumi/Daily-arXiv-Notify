@@ -195,6 +195,47 @@ def test_openai_client_uploads_pdf_and_uses_detail_model(tmp_path: Path):
     assert "comprehensive but scannable paper analysis" in input_payload[1]["content"][0]["text"]
 
 
+def test_openai_client_normalizes_successful_pdf_detail_source(tmp_path: Path) -> None:
+    client = OpenAIClient(_make_settings("/responses"))
+    fake_responses = FakeResponsesAPI(
+        parsed=PaperDetailResult(
+            source="PDF grounded analysis",
+            headline="Detailed headline",
+            contribution_summary="Contribution summary",
+            problem_and_context="Problem and context",
+            research_question="What is the paper solving?",
+            method_overview="A PDF-grounded method overview.",
+            novelty_and_positioning="Novelty and positioning",
+            experimental_setup="Experimental setup",
+            key_findings=["Finding 1"],
+            evidence_and_credibility="Evidence and credibility",
+            strengths=["Strength 1"],
+            limitations=["Limitation 1"],
+            practical_implications=["Practical implication 1"],
+            open_questions=["Open question 1"],
+            relevance_to_keywords="Relevant to the configured focus.",
+            reading_guide=["Read the experiments."],
+        )
+    )
+    client._client = SimpleNamespace(
+        responses=fake_responses,
+        files=FakeFilesAPI(),
+        beta=SimpleNamespace(chat=SimpleNamespace(completions=FakeChatAPI(parsed=None))),
+    )
+    pdf_path = tmp_path / "paper.pdf"
+    pdf_path.write_bytes(b"%PDF-1.4\n%fake pdf\n")
+
+    result = client.analyze_paper_pdf(
+        pdf_path=pdf_path,
+        title="Agent paper",
+        abstract="This paper studies agent systems.",
+        matched_keywords=["agent"],
+        upload_expires_after_hours=24,
+    )
+
+    assert result.source == "pdf"
+
+
 def test_openai_client_waits_for_uploaded_pdf_processing(tmp_path: Path, monkeypatch) -> None:
     client = OpenAIClient(_make_settings("/responses"))
     fake_responses = FakeResponsesAPI(

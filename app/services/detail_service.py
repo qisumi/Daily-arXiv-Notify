@@ -9,6 +9,7 @@ from app.clients.arxiv_client import ArxivClient
 from app.clients.openai_client import OpenAIClient
 from app.config import Settings
 from app.db import Database
+from app.detail_source import is_pdf_detail_source
 from app.models import ArxivPaper, KeywordFilterResult, PaperDetailResult, PaperSummaryResult
 from app.output_language import localize_output_text, output_language_slug
 
@@ -48,7 +49,7 @@ class DetailService:
             prompt_version=self.prompt_version,
         )
         if cached is not None:
-            if cached.source != "pdf":
+            if not is_pdf_detail_source(cached.source):
                 self.logger.info(
                     "Ignoring cached non-PDF detail for %s (source=%s); retrying PDF enrichment.",
                     paper.arxiv_id,
