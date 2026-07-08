@@ -24,6 +24,9 @@ SECRET_ENV_MAPPING = {
     ("email", "recipients"): "SMTP_RECIPIENTS",
 }
 
+DEFAULT_SUBSCRIPTION_ID = "default"
+SUBSCRIPTION_META_KEYS = {"id", "name", "enabled"}
+
 
 class ConfigError(ValueError):
     """Raised when the runtime configuration is invalid."""
@@ -135,6 +138,9 @@ class Settings:
     email: EmailSettings
     base_dir: Path
     pdf_enrichment: PDFEnrichmentSettings = field(default_factory=PDFEnrichmentSettings)
+    subscription_id: str = DEFAULT_SUBSCRIPTION_ID
+    subscription_name: str = ""
+    subscriptions: list["Settings"] = field(default_factory=list)
 
     @property
     def tzinfo(self) -> ZoneInfo:
@@ -144,8 +150,24 @@ class Settings:
     def target_keywords(self) -> list[str]:
         return self.filtering.ai_target_keywords or self.filtering.include_keywords
 
+    @property
+    def is_default_subscription(self) -> bool:
+        return self.subscription_id == DEFAULT_SUBSCRIPTION_ID
+
+    @property
+    def display_subscription_name(self) -> str:
+        return self.subscription_name or self.subscription_id
+
+    @property
+    def runtime_subscriptions(self) -> list["Settings"]:
+        return [self, *self.subscriptions]
+
     def public_dict(self) -> dict[str, Any]:
         return {
+            "subscription": {
+                "id": self.subscription_id,
+                "name": self.subscription_name,
+            },
             "timezone": self.timezone,
             "schedule": self.schedule,
             "database": {"sqlite_path": str(self.database.sqlite_path)},
@@ -208,6 +230,21 @@ def _set_nested(mapping: dict[str, Any], path: tuple[str, ...], value: Any) -> N
     current[path[-1]] = value
 
 
+def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
+    merged = copy.deepcopy(base)
+    for key, value in override.items():
+        if key in SUBSCRIPTION_META_KEYS:
+            continue
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = copy.deepcopy(value)
+    return merged
+
+
 def _parse_recipients(raw: str | list[str] | None) -> list[str]:
     if raw is None:
         return []
@@ -256,20 +293,13 @@ def _require_non_empty(name: str, value: Any, missing: list[str]) -> None:
         missing.append(name)
 
 
-def load_settings(config_path: str | Path = "config.toml") -> Settings:
-    config_path = Path(config_path).resolve()
-    if not config_path.exists():
-        raise ConfigError(f"Config file not found: {config_path}")
-
-    base_dir = config_path.parent
-    raw_config = _read_toml(config_path)
-    dotenv_config = {
-        key: value
-        for key, value in dotenv_values(base_dir / ".env").items()
-        if isinstance(key, str)
-    }
-    merged = _apply_secret_overrides(raw_config, dotenv_config, dict(os.environ))
-
+def _build_settings(
+    merged: dict[str, Any],
+    *,
+    base_dir: Path,
+    subscription_id: str,
+    subscription_name: str,
+) -> Settings:
     database = DatabaseSettings(
         sqlite_path=_resolve_path(base_dir, merged["database"]["sqlite_path"])
     )
@@ -362,8 +392,67 @@ def load_settings(config_path: str | Path = "config.toml") -> Settings:
         email=email,
         base_dir=base_dir,
         pdf_enrichment=pdf_enrichment,
+        subscription_id=subscription_id,
+        subscription_name=subscription_name,
     )
     _validate_settings(settings)
+    return settings
+
+
+def load_settings(config_path: str | Path = "config.toml") -> Settings:
+    config_path = Path(config_path).resolve()
+    if not config_path.exists():
+        raise ConfigError(f"Config file not found: {config_path}")
+
+    base_dir = config_path.parent
+    raw_config = _read_toml(config_path)
+    raw_subscriptions = raw_config.get("subscriptions", [])
+    if not isinstance(raw_subscriptions, list):
+        raise ConfigError("subscriptions must be an array of tables.")
+
+    base_config = copy.deepcopy(raw_config)
+    base_config.pop("subscriptions", None)
+
+    dotenv_config = {
+        key: value
+        for key, value in dotenv_values(base_dir / ".env").items()
+        if isinstance(key, str)
+    }
+    merged = _apply_secret_overrides(base_config, dotenv_config, dict(os.environ))
+
+    settings = _build_settings(
+        merged,
+        base_dir=base_dir,
+        subscription_id=DEFAULT_SUBSCRIPTION_ID,
+        subscription_name="",
+    )
+
+    subscriptions: list[Settings] = []
+    for index, raw_subscription in enumerate(raw_subscriptions, start=1):
+        if not isinstance(raw_subscription, dict):
+            raise ConfigError("Each subscription must be a table.")
+        if not bool(raw_subscription.get("enabled", True)):
+            continue
+
+        subscription_id = str(
+            raw_subscription.get("id") or f"subscription-{index}"
+        ).strip()
+        if not subscription_id:
+            raise ConfigError("subscriptions.id must not be empty.")
+        subscription_name = str(
+            raw_subscription.get("name") or subscription_id
+        ).strip()
+        subscription_config = _deep_merge(merged, raw_subscription)
+        subscriptions.append(
+            _build_settings(
+                subscription_config,
+                base_dir=base_dir,
+                subscription_id=subscription_id,
+                subscription_name=subscription_name,
+            )
+        )
+
+    settings.subscriptions = subscriptions
     return settings
 
 

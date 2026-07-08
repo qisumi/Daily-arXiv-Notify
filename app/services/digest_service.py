@@ -38,7 +38,14 @@ class DigestService:
         markdown_path.write_text(markdown, encoding="utf-8")
         html_path.write_text(html, encoding="utf-8")
 
-        subject = f"Daily arXiv Digest | {digest_date} | {len(candidates)} papers"
+        if self.settings.is_default_subscription:
+            subject = f"Daily arXiv Digest | {digest_date} | {len(candidates)} papers"
+        else:
+            subject = (
+                "Daily arXiv Digest | "
+                f"{self.settings.display_subscription_name} | "
+                f"{digest_date} | {len(candidates)} papers"
+            )
         return RenderedDigest(
             subject=subject,
             markdown=markdown,

@@ -298,3 +298,147 @@ enabled = true
 
     with pytest.raises(ConfigError, match="pdf_enrichment.enabled requires llm.endpoint"):
         load_settings(config_path)
+
+
+def test_load_settings_expands_enabled_subscriptions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SMTP_RECIPIENTS", raising=False)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE
+        + """
+
+[[subscriptions]]
+id = "llm-data-synthesis"
+name = "LLM Data Synthesis"
+enabled = true
+
+[subscriptions.database]
+sqlite_path = "data/llm-data-synthesis/app.db"
+
+[subscriptions.arxiv]
+categories = ["cs.AI", "cs.LG", "cs.CL", "cs.SE"]
+
+[subscriptions.filtering]
+include_keywords = ["Agentic Self-Instruct", "synthetic data"]
+exclude_keywords = []
+ai_target_keywords = ["Agentic Self-Instruct", "synthetic data"]
+
+[subscriptions.digest]
+max_papers = 12
+output_dir = "data/digests/llm-data-synthesis"
+
+[subscriptions.email]
+recipients = ["leibudao@gmail.com"]
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=default@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+
+    assert settings.subscription_id == "default"
+    assert settings.email.recipients == ["default@example.com"]
+    assert len(settings.subscriptions) == 1
+
+    subscription = settings.subscriptions[0]
+    assert subscription.subscription_id == "llm-data-synthesis"
+    assert subscription.subscription_name == "LLM Data Synthesis"
+    assert subscription.arxiv.categories == ["cs.AI", "cs.LG", "cs.CL", "cs.SE"]
+    assert subscription.filtering.ai_target_keywords == [
+        "Agentic Self-Instruct",
+        "synthetic data",
+    ]
+    assert subscription.email.recipients == ["leibudao@gmail.com"]
+    assert subscription.database.sqlite_path == (
+        tmp_path / "data" / "llm-data-synthesis" / "app.db"
+    ).resolve()
+    assert subscription.digest.output_dir == (
+        tmp_path / "data" / "digests" / "llm-data-synthesis"
+    ).resolve()
+    assert subscription.llm.api_key == "dotenv-key"
+
+
+def test_subscription_explicit_recipients_are_not_overridden_by_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE
+        + """
+
+[[subscriptions]]
+id = "llm-data-synthesis"
+
+[subscriptions.email]
+recipients = ["leibudao@gmail.com"]
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SMTP_RECIPIENTS", "env@example.com")
+
+    settings = load_settings(config_path)
+
+    assert settings.email.recipients == ["env@example.com"]
+    assert settings.subscriptions[0].email.recipients == ["leibudao@gmail.com"]
+
+
+def test_subscription_inherits_top_level_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SMTP_RECIPIENTS", raising=False)
+    config_path = tmp_path / "config.toml"
+    config_path.write_text(
+        CONFIG_TEMPLATE
+        + """
+
+[[subscriptions]]
+id = "inherited"
+""",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env").write_text(
+        "\n".join(
+            [
+                "OPENAI_API_KEY=dotenv-key",
+                "SMTP_HOST=smtp.dotenv.example",
+                "SMTP_FROM_ADDRESS=dotenv@example.com",
+                "SMTP_RECIPIENTS=dotenv@example.com",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    settings = load_settings(config_path)
+    subscription = settings.subscriptions[0]
+
+    assert subscription.subscription_id == "inherited"
+    assert subscription.arxiv.categories == settings.arxiv.categories
+    assert subscription.digest.output_dir == settings.digest.output_dir
+    assert subscription.digest.max_papers == settings.digest.max_papers
+    assert subscription.email.recipients == settings.email.recipients

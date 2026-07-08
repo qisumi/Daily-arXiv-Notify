@@ -22,6 +22,7 @@
 - 自动生成 Markdown 和 HTML 两种 digest。
 - 通过 SMTP 发送邮件，并可附加 Markdown 文件。
 - 使用 SQLite 缓存评估结果、摘要结果、详细解析结果、运行记录和 digest 元数据。
+- 支持通过 `[[subscriptions]]` 在同一次命令中运行额外的独立 digest。
 - 将提示词模板统一放在 `app/prompts/` 中管理，不再混在 client 代码中。
 - 支持 `dry-run`，便于先验证输出而不实际发信。
 
@@ -133,9 +134,9 @@ endpoint = "/responses"
 # legacy chat endpoint is also supported:
 # endpoint = "/chat/completions"
 api_key = ""
-classify_model = "gpt-5-mini"
-summarize_model = "gpt-5.4"
-detail_model = "gpt-5.4"
+classify_model = "doubao-seed-2-0-pro-260215"
+summarize_model = "doubao-seed-2-0-pro-260215"
+detail_model = "doubao-seed-2-0-pro-260215"
 output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
@@ -166,6 +167,77 @@ smtp_use_tls = true
 from_name = "Daily arXiv Notify"
 from_address = ""
 recipients = []
+
+[[subscriptions]]
+id = "llm-data-synthesis"
+name = "LLM Data Synthesis"
+enabled = true
+
+[subscriptions.database]
+sqlite_path = "data/llm-data-synthesis/app.db"
+
+[subscriptions.arxiv]
+categories = ["cs.AI", "cs.LG", "cs.CL", "cs.SE"]
+
+[subscriptions.filtering]
+include_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+exclude_keywords = []
+ai_target_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+
+[subscriptions.digest]
+max_papers = 12
+output_dir = "data/digests/llm-data-synthesis"
+
+[subscriptions.email]
+recipients = ["leibudao@gmail.com"]
 ```
 
 `.env` 示例：
@@ -229,6 +301,9 @@ daily-arxiv-notify run-once --help
 - `SMTP_FROM_ADDRESS`
 - `SMTP_RECIPIENTS`
 
+`SMTP_RECIPIENTS` 只覆盖顶层默认订阅。如果某个额外 `[[subscriptions]]`
+显式配置了 `[subscriptions.email].recipients`，该订阅会使用自己的收件人列表。
+
 ### 主要配置项
 
 | 配置项 | 说明 |
@@ -261,10 +336,16 @@ daily-arxiv-notify run-once --help
 | `digest.max_papers` | 每日 digest 最多收录的论文数。 |
 | `digest.output_dir` | Markdown 与 HTML digest 的输出目录。 |
 | `email.recipients` | 最终邮件的收件人列表。 |
+| `subscriptions` | 可选的额外独立 digest，会在默认订阅之后运行。 |
+| `subscriptions.id` | 用于日志和状态输出的稳定标识。 |
+| `subscriptions.name` | 非默认订阅邮件主题中显示的名称。 |
+| `subscriptions.enabled` | 是否运行该订阅，默认 `true`。 |
 
 说明：
 
 - `schedule` 当前主要作为记录性配置字段存在，实际定时仍由 PM2、cron 或其他外部调度器负责。
+- 额外订阅默认继承顶层配置，只有显式配置的嵌套字段会覆盖顶层值。
+- 每个额外订阅建议使用独立的 `database.sqlite_path` 和 `digest.output_dir`，避免运行窗口和产物互相影响。
 - 当前实现中，`digest.section_strategy` 实际上仍以 `keyword` 策略为主。
 - 当 `pdf_enrichment.enabled = true` 时，`llm.endpoint` 必须使用 `/responses`。
 - 提示词模板已经抽离到 `app/prompts/`，但 prompt version 的命名仍主要由 service 层常量控制。

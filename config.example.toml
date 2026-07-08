@@ -28,9 +28,9 @@ endpoint = "/responses"
 # legacy chat endpoint is also supported:
 # endpoint = "/chat/completions"
 api_key = ""
-classify_model = "gpt-5-mini"
-summarize_model = "gpt-5.4"
-detail_model = "gpt-5.4"
+classify_model = "doubao-seed-2-0-pro-260215"
+summarize_model = "doubao-seed-2-0-pro-260215"
+detail_model = "doubao-seed-2-0-pro-260215"
 output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
@@ -61,3 +61,74 @@ smtp_use_tls = true
 from_name = "Daily arXiv Notify"
 from_address = ""
 recipients = []
+
+[[subscriptions]]
+id = "llm-data-synthesis"
+name = "LLM Data Synthesis"
+enabled = true
+
+[subscriptions.database]
+sqlite_path = "data/llm-data-synthesis/app.db"
+
+[subscriptions.arxiv]
+categories = ["cs.AI", "cs.LG", "cs.CL", "cs.SE"]
+
+[subscriptions.filtering]
+include_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+exclude_keywords = []
+ai_target_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+
+[subscriptions.digest]
+max_papers = 12
+output_dir = "data/digests/llm-data-synthesis"
+
+[subscriptions.email]
+recipients = ["leibudao@gmail.com"]

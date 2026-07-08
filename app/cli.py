@@ -10,13 +10,27 @@ from app.pipeline import DailyDigestPipeline
 def run_once(*, config_path: str, dry_run: bool, verbose: bool) -> int:
     configure_logging(verbose=verbose)
     settings = load_settings(config_path)
-    pipeline = DailyDigestPipeline(settings)
-    try:
-        run_id = pipeline.run(dry_run=dry_run)
-    finally:
-        pipeline.close()
+    failures: list[tuple[str, Exception]] = []
 
-    print(f"Run completed successfully. run_id={run_id}")
+    for subscription_settings in settings.runtime_subscriptions:
+        pipeline: DailyDigestPipeline | None = None
+        subscription_id = subscription_settings.subscription_id
+        run_id: int | None = None
+        try:
+            pipeline = DailyDigestPipeline(subscription_settings)
+            run_id = pipeline.run(dry_run=dry_run)
+        except Exception as exc:
+            failures.append((subscription_id, exc))
+            print(f"Run failed. subscription={subscription_id} error={exc}")
+        finally:
+            if pipeline is not None:
+                pipeline.close()
+
+        if run_id is not None:
+            print(f"Run completed successfully. subscription={subscription_id} run_id={run_id}")
+
+    if failures:
+        return 1
     return 0
 
 

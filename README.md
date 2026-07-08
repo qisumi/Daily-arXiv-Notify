@@ -22,6 +22,7 @@
 - Markdown and HTML digest generation.
 - SMTP delivery with optional Markdown attachment.
 - SQLite caching for evaluations, summaries, details, runs, and digest metadata.
+- Optional `[[subscriptions]]` for running extra independent digests in the same command.
 - External prompt templates under `app/prompts/`, instead of mixing prompt text into client code.
 - `dry-run` mode for validating output without sending mail.
 
@@ -133,9 +134,9 @@ endpoint = "/responses"
 # legacy chat endpoint is also supported:
 # endpoint = "/chat/completions"
 api_key = ""
-classify_model = "gpt-5-mini"
-summarize_model = "gpt-5.4"
-detail_model = "gpt-5.4"
+classify_model = "doubao-seed-2-0-pro-260215"
+summarize_model = "doubao-seed-2-0-pro-260215"
+detail_model = "doubao-seed-2-0-pro-260215"
 output_language = "Chinese"
 reasoning_effort = "high"
 detail_reasoning_effort = "high"
@@ -166,6 +167,77 @@ smtp_use_tls = true
 from_name = "Daily arXiv Notify"
 from_address = ""
 recipients = []
+
+[[subscriptions]]
+id = "llm-data-synthesis"
+name = "LLM Data Synthesis"
+enabled = true
+
+[subscriptions.database]
+sqlite_path = "data/llm-data-synthesis/app.db"
+
+[subscriptions.arxiv]
+categories = ["cs.AI", "cs.LG", "cs.CL", "cs.SE"]
+
+[subscriptions.filtering]
+include_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+exclude_keywords = []
+ai_target_keywords = [
+  "Agentic Self-Instruct",
+  "agentic self-instruct",
+  "agentic self instruct",
+  "agent self-instruct",
+  "self-instruct",
+  "self instruction",
+  "instruction generation",
+  "instruction tuning data",
+  "agent-generated data",
+  "agentic data generation",
+  "automated data generation",
+  "synthetic data",
+  "data synthesis",
+  "synthetic training data",
+  "synthetic evaluation data",
+  "LLM-generated data",
+  "model-generated data",
+  "self-generated data",
+  "data generation",
+  "data curation",
+  "high-quality training data",
+  "high-quality evaluation data",
+  "data quality",
+]
+
+[subscriptions.digest]
+max_papers = 12
+output_dir = "data/digests/llm-data-synthesis"
+
+[subscriptions.email]
+recipients = ["leibudao@gmail.com"]
 ```
 
 Example `.env`:
@@ -229,6 +301,10 @@ Supported secret overrides:
 - `SMTP_FROM_ADDRESS`
 - `SMTP_RECIPIENTS`
 
+`SMTP_RECIPIENTS` overrides only the default top-level subscription. If an additional
+`[[subscriptions]]` entry sets `[subscriptions.email].recipients`, that explicit list is
+used for that subscription.
+
 ### Main Settings
 
 | Key | Description |
@@ -261,10 +337,16 @@ Supported secret overrides:
 | `digest.max_papers` | Maximum papers included in one daily digest. |
 | `digest.output_dir` | Output directory for Markdown and HTML digests. |
 | `email.recipients` | Recipient list for the final email. |
+| `subscriptions` | Optional extra independent digests run after the default subscription. |
+| `subscriptions.id` | Stable identifier used in logs and status output. |
+| `subscriptions.name` | Display name included in non-default email subjects. |
+| `subscriptions.enabled` | Whether the subscription should run. Defaults to `true`. |
 
 Notes:
 
 - `schedule` is currently a recorded config field; scheduling is still handled by PM2, cron, or another external scheduler.
+- Extra subscriptions inherit top-level settings unless they override a supported nested field.
+- Each extra subscription should use its own `database.sqlite_path` and `digest.output_dir` to keep windows and artifacts independent.
 - `digest.section_strategy` is still effectively `keyword` in the current implementation.
 - When `pdf_enrichment.enabled = true`, `llm.endpoint` must be `/responses`.
 - Prompt templates live under `app/prompts/`, while prompt-version naming is still managed by code constants in the service layer.
